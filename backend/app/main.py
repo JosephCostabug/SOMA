@@ -6,6 +6,11 @@ from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 
+from app.auth import (
+    CurrentPrincipal,
+    require_astronaut_scope,
+    require_permission,
+)
 from app.database import get_connection, initialize_database
 from app.schemas import (
     METRIC_UNITS,
@@ -173,7 +178,18 @@ def list_indicators() -> list[dict[str, object]]:
     status_code=status.HTTP_201_CREATED,
     tags=["readings"],
 )
-def create_readings(payload: ReadingBatchInput, connection: Connection) -> list[HealthReading]:
+def create_readings(
+    payload: ReadingBatchInput,
+    connection: Connection,
+    principal: CurrentPrincipal,
+) -> list[HealthReading]:
+    if principal.actor_type != "user":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este endpoint requer uma identidade de utilizador.",
+        )
+    require_permission(principal, "readings:write")
+    require_astronaut_scope(principal, payload.astronaut_id)
     records, _ = _persist_readings(connection, [(payload, None, None)])
     return records
 
@@ -186,7 +202,22 @@ def create_readings(payload: ReadingBatchInput, connection: Connection) -> list[
 def sync_readings(
     payload: OfflineSyncBatchInput,
     connection: Connection,
+    principal: CurrentPrincipal,
 ) -> SyncAcknowledgement:
+    if principal.actor_type != "device":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este endpoint requer uma identidade de dispositivo.",
+        )
+    if principal.subject != str(payload.source_device_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="O dispositivo autenticado não corresponde ao lote.",
+        )
+    require_permission(principal, "sync:write")
+    for reading in payload.readings:
+        require_astronaut_scope(principal, reading.astronaut_id)
+
     reading_batches = [
         (
             reading,
@@ -209,6 +240,7 @@ def sync_readings(
 )
 def get_readings(
     connection: Connection,
+    principal: CurrentPrincipal,
     astronaut_id: Annotated[str, Query(min_length=1, max_length=100)],
     metric: Metric | None = None,
     start: datetime | None = None,
@@ -216,6 +248,14 @@ def get_readings(
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ReadingHistory:
+    if principal.actor_type != "user":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este endpoint requer uma identidade de utilizador.",
+        )
+    require_permission(principal, "readings:read")
+    require_astronaut_scope(principal, astronaut_id)
+
     if start is not None and (start.tzinfo is None or start.utcoffset() is None):
         raise HTTPException(status_code=422, detail="start tem de incluir fuso horário.")
     if end is not None and (end.tzinfo is None or end.utcoffset() is None):

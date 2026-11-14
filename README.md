@@ -21,11 +21,14 @@ Define `HEALTH_DB_PATH` para escolher outro caminho.
 
 - `GET /health` — estado do serviço.
 - `GET /api/v1/indicators` — indicadores, unidades e limites técnicos de entrada.
-- `POST /api/v1/readings` — regista um conjunto de medições com o mesmo instante.
+- `POST /api/v1/readings` — regista um conjunto de medições com o mesmo instante
+  (token de utilizador com `readings:write` e escopo para o astronauta).
 - `GET /api/v1/readings` — consulta histórico por astronauta, indicador e período,
-  com paginação.
+  com paginação (token de utilizador com `readings:read` e escopo para o
+  astronauta).
 - `POST /api/v1/sync/readings` — recebe um lote offline limitado e idempotente,
-  devolvendo confirmação por medição.
+  devolvendo confirmação por medição (token de dispositivo com `sync:write`,
+  identidade igual a `source_device_id` e escopo para os astronautas do lote).
 
 ### Exemplo de registo
 
@@ -53,9 +56,32 @@ datas com fuso horário; são normalizados para UTC. Glicemia aceita o contexto
 valores e valida que a diastólica é inferior à sistólica.
 
 Os limites expostos são validações técnicas das entradas, não intervalos de
-normalidade, diagnósticos ou critérios de aptidão médica. Este protótipo ainda
-não implementa autenticação/autorização: não deve ser exposto a dados reais ou
-a redes públicas antes de acrescentar esses controlos e rever a segurança.
+normalidade, diagnósticos ou critérios de aptidão médica.
+
+## Autenticação e autorização
+
+Os endpoints de leitura, escrita e sincronização exigem um JWT Bearer assinado
+com RS256 por um emissor local confiável. Configura o serviço com
+`AUTH_PUBLIC_KEY`, `AUTH_ISSUER` e `AUTH_AUDIENCE`; sem estas configurações, os
+endpoints protegidos falham de forma fechada. `AUTH_PUBLIC_KEY` deve conter a
+chave pública PEM do emissor (em ambientes que não aceitam quebras de linha,
+usa `\n` escapado).
+
+O token tem de incluir `sub`, `iss`, `aud`, `iat`, `exp`, `actor_type`,
+`astronaut_ids` e `permissions`. `actor_type` é `user` ou `device`. Utilizadores
+precisam de `readings:read` e/ou `readings:write`; dispositivos precisam de
+`sync:write`, e o `sub` do token de dispositivo tem de corresponder ao
+`source_device_id` do lote. A autorização também confere que cada astronauta
+está em `astronaut_ids`.
+
+O emissor local da missão é responsável por provisionar identidades e emitir
+tokens assinados que funcionem durante a desconexão da Terra. Esta API valida
+tokens offline, mas **não** implementa registo de contas, login, emissão ou
+renovação de tokens, revogação local ou rotação coordenada de chaves. A
+identidade de teste usada pela suite não é uma chave de desenvolvimento nem
+deve ser reutilizada. Não usar dados reais nem expor a rede antes de integrar
+um emissor confiável, proteger a distribuição da chave pública e validar a
+política de validade/revogação dos tokens e o transporte seguro.
 
 ## Sincronização offline (interface do backend)
 
@@ -98,13 +124,24 @@ Uma resposta `accepted` ou `already_received` confirma a medição indicada por
 `reading_id` e sequência; o lote em si só é confirmado quando todas as suas
 medições são guardadas e a resposta é enviada.
 
-Esta interface não implementa a fila local da PWA, autenticação de dispositivos,
-autorização, cifragem em repouso nem resolução de sincronização entre múltiplas
-fontes. Os UUIDs de dispositivo e identificadores enviados pelo cliente são
-metadados, não prova de identidade. A migração SQLite adiciona as colunas de
-sincronização sem apagar os registos existentes. O modo offline ainda não foi
-validado para operação espacial: requer testes de perda de ligação/reinício e
-revisão de segurança e missão antes de dados reais.
+Esta interface não implementa a fila local da PWA, provisionamento de identidades,
+emissão de credenciais, cifragem em repouso nem resolução de sincronização entre
+múltiplas fontes. Os UUIDs de dispositivo e identificadores enviados pelo cliente
+são metadados; a identidade do dispositivo é verificada pelo token assinado.
+Autenticação e autorização atuais são apenas validação stateless de claims. A
+migração SQLite adiciona as colunas de sincronização sem apagar os registos
+existentes. O modo offline ainda não foi validado para operação espacial:
+requer testes de perda de ligação/reinício e revisão de segurança e missão antes
+de dados reais.
+
+## Arquitetura offline
+
+A decisão sobre responsabilidades, propriedade dos dados, fluxo entre
+dispositivo/PWA, serviço a bordo e sistema terrestre, estados por salto,
+confirmações e tratamento de falhas está documentada em
+[Arquitetura de dados e sincronização offline](docs/architecture/offline-data-synchronization.md).
+Esse documento define a arquitetura pretendida; não significa que a fila offline
+ou os controlos de missão já estejam implementados.
 
 ## Testes
 
