@@ -5,6 +5,7 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 import sqlite3
 from pathlib import Path
+from uuid import uuid4
 
 import jwt
 import pytest
@@ -12,7 +13,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
-from app.database import initialize_database
+from app.database import connect_database, initialize_database
 from app.main import app
 from app.identity_bootstrap import (
     IdentityBootstrapError,
@@ -36,6 +37,12 @@ from app.mission_identity import (
     MissionIdentity,
     MissionIdentityConfiguration,
     MissionState,
+)
+from app.provisioning import load_provisioned_mission_configuration
+from app.token_service import (
+    CredentialIssueError,
+    OnboardTokenService,
+    RefreshTokenReuseError,
 )
 
 
@@ -204,6 +211,7 @@ def _authorization_headers(
     expires_in=timedelta(minutes=5),
 ):
     now = datetime.now(timezone.utc)
+    token_id = str(uuid4())
     token = jwt.encode(
         {
             "sub": subject,
@@ -212,6 +220,7 @@ def _authorization_headers(
             "iat": now,
             "nbf": now,
             "exp": now + expires_in,
+            "jti": token_id,
             "mission_id": mission_id,
             "actor_type": actor_type,
             "astronaut_ids": astronaut_ids or ["astronaut-01"],
@@ -226,7 +235,147 @@ def _authorization_headers(
         algorithm="RS256",
         headers={"kid": _ONBOARD_KEY_ID, "typ": "JWT"},
     )
+    initialize_database()
+    connection = connect_database()
+    try:
+        connection.execute(
+            """
+            INSERT INTO onboard_access_tokens (jti, family_id, expires_at)
+            VALUES (?, ?, ?)
+            """,
+            (token_id, token_id, (now + expires_in).isoformat()),
+        )
+        connection.commit()
+    finally:
+        connection.close()
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_onboard_credentials_rotate_and_reuse_revokes_family():
+    with TestClient(app) as client:
+        bootstrap = app.state.identity_bootstrap
+        connection = connect_database()
+        try:
+            configuration = load_provisioned_mission_configuration(
+                connection,
+                base_configuration=bootstrap.base_configuration,
+                key_set=bootstrap.ground_keys,
+                expected_onboard_service_id=_ISSUER,
+                now=datetime.now(timezone.utc),
+            )
+            service = OnboardTokenService(
+                private_key_pem=_PRIVATE_KEY.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.PKCS8,
+                    encryption_algorithm=serialization.NoEncryption(),
+                ).decode(),
+                key_id=_ONBOARD_KEY_ID,
+                verifier=bootstrap.onboard_token_verifier,
+            )
+            now = datetime.now(timezone.utc)
+            issued = service.issue(
+                connection,
+                configuration=configuration,
+                subject="user-01",
+                actor_type=ActorType.USER,
+                permissions=frozenset({"readings:read"}),
+                astronaut_ids=frozenset({"astronaut-01"}),
+                access_lifetime_seconds=300,
+                now=now,
+            )
+            claims = jwt.decode(
+                issued.access_token,
+                _PUBLIC_KEY,
+                algorithms=["RS256"],
+                audience=_AUDIENCE,
+                issuer=_ISSUER,
+            )
+            first_jti = claims["jti"]
+            rotated = service.refresh(
+                connection,
+                configuration=configuration,
+                refresh_token=issued.refresh_token,
+                access_lifetime_seconds=300,
+                now=now,
+            )
+            rotated_claims = jwt.decode(
+                rotated.access_token,
+                _PUBLIC_KEY,
+                algorithms=["RS256"],
+                audience=_AUDIENCE,
+                issuer=_ISSUER,
+            )
+            with pytest.raises(RefreshTokenReuseError):
+                service.refresh(
+                    connection,
+                    configuration=configuration,
+                    refresh_token=issued.refresh_token,
+                    access_lifetime_seconds=300,
+                    now=now,
+                )
+
+            records = connection.execute(
+                """
+                SELECT jti, revoked_at
+                FROM onboard_access_tokens
+                WHERE family_id = (
+                    SELECT family_id
+                    FROM onboard_refresh_sessions
+                    WHERE token_sha256 = ?
+                )
+                """,
+                (hashlib.sha256(issued.refresh_token.encode("ascii")).hexdigest(),),
+            ).fetchall()
+            assert rotated_claims["jti"] != first_jti
+            assert len(records) == 2
+            assert all(record["revoked_at"] is not None for record in records)
+            response = client.get(
+                "/api/v1/readings",
+                params={"astronaut_id": "astronaut-01"},
+                headers={"Authorization": f"Bearer {rotated.access_token}"},
+            )
+            assert response.status_code == 401
+        finally:
+            connection.close()
+
+
+def test_onboard_credentials_reject_lifetime_outside_delegation():
+    with TestClient(app):
+        bootstrap = app.state.identity_bootstrap
+        connection = connect_database()
+        try:
+            configuration = load_provisioned_mission_configuration(
+                connection,
+                base_configuration=bootstrap.base_configuration,
+                key_set=bootstrap.ground_keys,
+                expected_onboard_service_id=_ISSUER,
+                now=datetime.now(timezone.utc),
+            )
+            service = OnboardTokenService(
+                private_key_pem=_PRIVATE_KEY.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.PKCS8,
+                    encryption_algorithm=serialization.NoEncryption(),
+                ).decode(),
+                key_id=_ONBOARD_KEY_ID,
+                verifier=bootstrap.onboard_token_verifier,
+            )
+            with pytest.raises(CredentialIssueError):
+                service.issue(
+                    connection,
+                    configuration=configuration,
+                    subject="user-01",
+                    actor_type=ActorType.USER,
+                    permissions=frozenset({"readings:read"}),
+                    astronaut_ids=frozenset({"astronaut-01"}),
+                    access_lifetime_seconds=3601,
+                    now=datetime.now(timezone.utc),
+                )
+            assert connection.execute(
+                "SELECT COUNT(*) FROM onboard_access_tokens"
+            ).fetchone()[0] == 0
+        finally:
+            connection.close()
 
 
 def _device_headers(device_id=_DEVICE_ID, astronaut_ids=None):

@@ -93,7 +93,7 @@ uvicorn app.main:app --app-dir backend
 
 O emissor local assina tokens com `kid` igual a chave onboard provisionada. Os
 tokens devem conter `sub`, `iss` (ID do serviço onboard), `aud`, `iat`, `nbf`,
-`exp`, `mission_id`, `actor_type`, `astronaut_ids` e `permissions`. A cada
+`exp`, `jti`, `mission_id`, `actor_type`, `astronaut_ids` e `permissions`. A cada
 pedido protegido, a API valida novamente as delegações persistidas e exige que
 a missão, o serviço, a identidade individual, o tipo de ator, o período do
 token, escopos e permissões estejam ativos e cobertos pela delegacao. A
@@ -106,12 +106,17 @@ O primeiro conjunto de delegações e instalado na base SQLite apenas se ainda
 não existir provisionamento para a missão. Um bootstrap atualizado não
 substitui automaticamente delegações persistidas; ainda falta um canal/CLI
 administrativo autenticado para atualizar e revogar a configuração em operação.
-Esta API não implementa registo/login de utilizadores, emissão/renovacao de
-tokens, armazenamento da chave privada onboard, revogação individual de tokens
-ou protocolo de rotação de chaves. A base SQLite não protege contra rollback ou
-adulteração por um administrador local. Nao usar dados reais nem expor a rede
-antes de validar o provisionamento no ambiente de missão, a política temporal,
-transporte TLS/mTLS e os controlos operacionais.
+O `OnboardTokenService` implementa emissão, rotação de refresh tokens e
+revogação local por família, mas ainda não existe endpoint HTTP nem uma
+fronteira de autenticação offline para comprovar a identidade de utilizadores
+ou dispositivos antes da emissão. Tokens de acesso requerem `jti` e registo
+persistido; cada pedido protegido consulta o estado de revogação. A chave
+privada onboard tem de ser fornecida em runtime e não é guardada no bootstrap
+nem na base de dados. Ainda faltam um provedor seguro dessa chave, registo/login,
+prova de posse de dispositivo e protocolo de rotação de chaves. A base SQLite
+não protege contra rollback ou adulteração por um administrador local. Não usar
+dados reais nem expor a rede antes de validar o provisionamento no ambiente de
+missão, a política temporal, transporte TLS/mTLS e os controlos operacionais.
 
 ## Sincronização offline (interface do backend)
 

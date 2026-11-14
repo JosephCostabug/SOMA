@@ -122,6 +122,7 @@ def get_current_principal(
                     "iat",
                     "nbf",
                     "exp",
+                    "jti",
                     "mission_id",
                     "actor_type",
                     "astronaut_ids",
@@ -144,6 +145,7 @@ def get_current_principal(
         "iat",
         "nbf",
         "exp",
+        "jti",
         "mission_id",
         "actor_type",
         "astronaut_ids",
@@ -152,6 +154,7 @@ def get_current_principal(
         raise _unauthorized("O token contém claims não permitidas.")
 
     subject = claims.get("sub")
+    token_id = claims.get("jti")
     actor_type = claims.get("actor_type")
     mission_id = claims.get("mission_id")
     astronaut_ids = claims.get("astronaut_ids")
@@ -159,6 +162,8 @@ def get_current_principal(
     if (
         not isinstance(subject, str)
         or not subject
+        or not isinstance(token_id, str)
+        or not token_id
         or not isinstance(actor_type, str)
         or actor_type not in {ActorType.USER.value, ActorType.DEVICE.value}
         or mission_id != configuration.mission.mission_id
@@ -221,6 +226,19 @@ def get_current_principal(
     )
     if not permitted_by_delegation:
         raise _unauthorized("O token não está coberto por uma delegação ativa.")
+
+    try:
+        access_token_record = connection.execute(
+            "SELECT revoked_at FROM onboard_access_tokens WHERE jti = ?",
+            (token_id,),
+        ).fetchone()
+    except sqlite3.Error as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Não foi possível consultar o estado local da credencial.",
+        ) from error
+    if access_token_record is None or access_token_record["revoked_at"] is not None:
+        raise _unauthorized("O token foi revogado ou não está registado localmente.")
 
     validated_actor_type: Literal["user", "device"]
     if actor_type == ActorType.USER.value:

@@ -121,6 +121,44 @@ def initialize_database() -> None:
         )
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS onboard_refresh_sessions (
+                token_sha256 TEXT PRIMARY KEY,
+                family_id TEXT NOT NULL,
+                mission_id TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                actor_type TEXT NOT NULL CHECK (actor_type IN ('user', 'device')),
+                permissions_json TEXT NOT NULL,
+                astronaut_ids_json TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                used_at TEXT,
+                revoked_at TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_onboard_refresh_family
+            ON onboard_refresh_sessions (family_id)
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS onboard_access_tokens (
+                jti TEXT PRIMARY KEY,
+                family_id TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                revoked_at TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_onboard_access_family
+            ON onboard_access_tokens (family_id)
+            """
+        )
+        connection.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_sync_batches_device_received
             ON sync_batches (source_device_id, received_at)
             """

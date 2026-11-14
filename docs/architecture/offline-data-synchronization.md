@@ -84,10 +84,22 @@ em `backend/app/key_management.py`; bootstrap em
 `backend/app/identity_bootstrap.py`; persistencia em
 `backend/app/provisioning.py`; e autenticacao da API em `backend/app/auth.py`.
 O primeiro conjunto e carregado a partir do bootstrap, mas atualizacoes nao sao
-aplicadas automaticamente quando o ficheiro muda. Ainda faltam um canal/CLI
-administrativo para atualizar/revogar delegacoes, emissao e renovacao de tokens,
-revogacao individual, rotacao de chaves, protecao contra rollback/adulteracao
-por administrador local e transporte TLS/mTLS. JWT nao substitui TLS nem
+aplicadas automaticamente quando o ficheiro muda. O servico interno de
+credenciais em `backend/app/token_service.py` emite tokens de acesso RS256 e
+refresh tokens opacos de uso unico; renova por rotacao e revoga localmente a
+familia em caso de reutilizacao. O `jti` de acesso e o hash SHA-256 do refresh
+sao persistidos, e cada pedido autenticado verifica o estado local de revogacao.
+O servico ainda nao tem endpoints HTTP nem um mecanismo offline de autenticacao
+para provar a identidade de utilizadores/dispositivos; portanto nao deve ser
+exposto aos consumidores ate essa fronteira ser definida. A chave privada
+onboard tem de ser fornecida em runtime e nao e guardada no bootstrap nem na
+base de dados.
+
+Ainda faltam um canal/CLI administrativo para atualizar/revogar delegacoes,
+prova de posse dos dispositivos, autenticacao offline dos utilizadores,
+fornecedor seguro da chave privada, politica formal de retencao do estado de
+credenciais, rotacao de chaves, protecao contra rollback/adulteracao por
+administrador local e transporte TLS/mTLS. JWT nao substitui TLS nem
 autenticacao mutua entre componentes. Esta implementacao nao esta validada para
 uso operacional ou dados reais.
 
