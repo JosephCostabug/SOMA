@@ -197,12 +197,14 @@ Uma resposta `accepted` ou `already_received` confirma a medição indicada por
 `reading_id` e sequência; o lote em si só é confirmado quando todas as suas
 medições são guardadas e a resposta é enviada.
 
-Esta interface não implementa a fila local da PWA, provisionamento de identidades,
-emissão de credenciais, cifragem em repouso nem resolução de sincronização entre
-múltiplas fontes. Os UUIDs de dispositivo e identificadores enviados pelo cliente
-são metadados; a identidade do dispositivo é verificada pelo token assinado.
-Autenticação e autorização atuais são apenas validação stateless de claims. A
-migração SQLite adiciona as colunas de sincronização e tabelas de recibos sem
+Esta interface de sincronização não implementa a fila local da PWA,
+provisionamento de identidades, cifragem em repouso nem resolução de
+sincronização entre múltiplas fontes. Os UUIDs de dispositivo e identificadores
+enviados pelo cliente são metadados; a identidade do dispositivo é verificada
+pelo token assinado.
+A autorização valida as claims assinadas contra a missão, a identidade e a
+delegação ativas, além do registo persistido de revogação por `jti`. A migração
+SQLite adiciona as colunas de sincronização e tabelas de recibos sem
 apagar os registos existentes. As gravações locais usam transações SQLite,
 chaves estrangeiras e `synchronous=FULL`; a durabilidade ainda depende do
 armazenamento e da plataforma reais e precisa de validação de falhas. Este

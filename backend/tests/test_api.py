@@ -42,6 +42,7 @@ from app.provisioning import load_provisioned_mission_configuration
 from app.token_service import (
     CredentialIssueError,
     OnboardTokenService,
+    RefreshTokenError,
     RefreshTokenReuseError,
 )
 
@@ -251,6 +252,19 @@ def _authorization_headers(
     return {"Authorization": f"Bearer {token}"}
 
 
+def _onboard_token_service(bootstrap):
+    private_key_pem = _PRIVATE_KEY.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
+    return OnboardTokenService(
+        private_key_pem=private_key_pem,
+        key_id=_ONBOARD_KEY_ID,
+        verifier=bootstrap.onboard_token_verifier,
+    )
+
+
 def test_onboard_credentials_rotate_and_reuse_revokes_family():
     with TestClient(app) as client:
         bootstrap = app.state.identity_bootstrap
@@ -263,15 +277,7 @@ def test_onboard_credentials_rotate_and_reuse_revokes_family():
                 expected_onboard_service_id=_ISSUER,
                 now=datetime.now(timezone.utc),
             )
-            service = OnboardTokenService(
-                private_key_pem=_PRIVATE_KEY.private_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PrivateFormat.PKCS8,
-                    encryption_algorithm=serialization.NoEncryption(),
-                ).decode(),
-                key_id=_ONBOARD_KEY_ID,
-                verifier=bootstrap.onboard_token_verifier,
-            )
+            service = _onboard_token_service(bootstrap)
             now = datetime.now(timezone.utc)
             issued = service.issue(
                 connection,
@@ -351,15 +357,7 @@ def test_onboard_credentials_reject_lifetime_outside_delegation():
                 expected_onboard_service_id=_ISSUER,
                 now=datetime.now(timezone.utc),
             )
-            service = OnboardTokenService(
-                private_key_pem=_PRIVATE_KEY.private_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PrivateFormat.PKCS8,
-                    encryption_algorithm=serialization.NoEncryption(),
-                ).decode(),
-                key_id=_ONBOARD_KEY_ID,
-                verifier=bootstrap.onboard_token_verifier,
-            )
+            service = _onboard_token_service(bootstrap)
             with pytest.raises(CredentialIssueError):
                 service.issue(
                     connection,
@@ -374,6 +372,192 @@ def test_onboard_credentials_reject_lifetime_outside_delegation():
             assert connection.execute(
                 "SELECT COUNT(*) FROM onboard_access_tokens"
             ).fetchone()[0] == 0
+        finally:
+            connection.close()
+
+
+def test_onboard_credential_issue_rolls_back_if_refresh_session_cannot_persist():
+    with TestClient(app):
+        bootstrap = app.state.identity_bootstrap
+        connection = connect_database()
+        try:
+            configuration = load_provisioned_mission_configuration(
+                connection,
+                base_configuration=bootstrap.base_configuration,
+                key_set=bootstrap.ground_keys,
+                expected_onboard_service_id=_ISSUER,
+                now=datetime.now(timezone.utc),
+            )
+            service = _onboard_token_service(bootstrap)
+            connection.execute(
+                """
+                CREATE TRIGGER reject_refresh_session
+                BEFORE INSERT ON onboard_refresh_sessions
+                BEGIN
+                    SELECT RAISE(ABORT, 'refresh persistence unavailable');
+                END
+                """
+            )
+            connection.commit()
+
+            with pytest.raises(CredentialIssueError):
+                service.issue(
+                    connection,
+                    configuration=configuration,
+                    subject="user-01",
+                    actor_type=ActorType.USER,
+                    permissions=frozenset({"readings:read"}),
+                    astronaut_ids=frozenset({"astronaut-01"}),
+                    access_lifetime_seconds=300,
+                    now=datetime.now(timezone.utc),
+                )
+
+            assert not connection.in_transaction
+            assert connection.execute(
+                "SELECT COUNT(*) FROM onboard_access_tokens"
+            ).fetchone()[0] == 0
+            assert connection.execute(
+                "SELECT COUNT(*) FROM onboard_refresh_sessions"
+            ).fetchone()[0] == 0
+        finally:
+            connection.close()
+
+
+def test_onboard_revoke_family_invalidates_refresh_and_access_tokens():
+    with TestClient(app) as client:
+        bootstrap = app.state.identity_bootstrap
+        connection = connect_database()
+        try:
+            now = datetime.now(timezone.utc)
+            configuration = load_provisioned_mission_configuration(
+                connection,
+                base_configuration=bootstrap.base_configuration,
+                key_set=bootstrap.ground_keys,
+                expected_onboard_service_id=_ISSUER,
+                now=now,
+            )
+            service = _onboard_token_service(bootstrap)
+            issued = service.issue(
+                connection,
+                configuration=configuration,
+                subject="user-01",
+                actor_type=ActorType.USER,
+                permissions=frozenset({"readings:read"}),
+                astronaut_ids=frozenset({"astronaut-01"}),
+                access_lifetime_seconds=300,
+                now=now,
+            )
+            rotated = service.refresh(
+                connection,
+                configuration=configuration,
+                refresh_token=issued.refresh_token,
+                access_lifetime_seconds=300,
+                now=now,
+            )
+
+            active_response = client.get(
+                "/api/v1/readings",
+                params={"astronaut_id": "astronaut-01"},
+                headers={"Authorization": f"Bearer {rotated.access_token}"},
+            )
+            service.revoke_family(
+                connection,
+                refresh_token=rotated.refresh_token,
+                now=now,
+            )
+            revoked_response = client.get(
+                "/api/v1/readings",
+                params={"astronaut_id": "astronaut-01"},
+                headers={"Authorization": f"Bearer {rotated.access_token}"},
+            )
+            family_records = connection.execute(
+                """
+                SELECT revoked_at
+                FROM onboard_refresh_sessions
+                WHERE family_id = (
+                    SELECT family_id FROM onboard_refresh_sessions
+                    WHERE token_sha256 = ?
+                )
+                """,
+                (hashlib.sha256(issued.refresh_token.encode("ascii")).hexdigest(),),
+            ).fetchall()
+            access_records = connection.execute(
+                """
+                SELECT revoked_at
+                FROM onboard_access_tokens
+                WHERE family_id = (
+                    SELECT family_id FROM onboard_refresh_sessions
+                    WHERE token_sha256 = ?
+                )
+                """,
+                (hashlib.sha256(issued.refresh_token.encode("ascii")).hexdigest(),),
+            ).fetchall()
+
+            assert active_response.status_code == 200
+            assert revoked_response.status_code == 401
+            assert len(family_records) == 2
+            assert all(row["revoked_at"] is not None for row in family_records)
+            assert len(access_records) == 2
+            assert all(row["revoked_at"] is not None for row in access_records)
+            with pytest.raises(RefreshTokenError):
+                service.refresh(
+                    connection,
+                    configuration=configuration,
+                    refresh_token=rotated.refresh_token,
+                    access_lifetime_seconds=300,
+                    now=now,
+                )
+        finally:
+            connection.close()
+
+
+def test_onboard_expired_refresh_token_is_not_rotated():
+    with TestClient(app):
+        bootstrap = app.state.identity_bootstrap
+        connection = connect_database()
+        try:
+            now = datetime.now(timezone.utc)
+            configuration = load_provisioned_mission_configuration(
+                connection,
+                base_configuration=bootstrap.base_configuration,
+                key_set=bootstrap.ground_keys,
+                expected_onboard_service_id=_ISSUER,
+                now=now,
+            )
+            service = _onboard_token_service(bootstrap)
+            issued = service.issue(
+                connection,
+                configuration=configuration,
+                subject="user-01",
+                actor_type=ActorType.USER,
+                permissions=frozenset({"readings:read"}),
+                astronaut_ids=frozenset({"astronaut-01"}),
+                access_lifetime_seconds=300,
+                now=now,
+            )
+
+            with pytest.raises(RefreshTokenError, match="Refresh token expirado"):
+                service.refresh(
+                    connection,
+                    configuration=configuration,
+                    refresh_token=issued.refresh_token,
+                    access_lifetime_seconds=300,
+                    now=issued.refresh_expires_at + timedelta(seconds=1),
+                )
+
+            refresh_row = connection.execute(
+                """
+                SELECT used_at, revoked_at
+                FROM onboard_refresh_sessions
+                WHERE token_sha256 = ?
+                """,
+                (hashlib.sha256(issued.refresh_token.encode("ascii")).hexdigest(),),
+            ).fetchone()
+            assert refresh_row["used_at"] is None
+            assert refresh_row["revoked_at"] is None
+            assert connection.execute(
+                "SELECT COUNT(*) FROM onboard_access_tokens"
+            ).fetchone()[0] == 1
         finally:
             connection.close()
 
