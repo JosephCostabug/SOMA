@@ -156,6 +156,36 @@ a política operacional ainda não foi decidida. Estes modelos não implementam
 provisionamento, persistência de identidades, gestão de chaves nem emissão de
 credenciais.
 
+### Verificação da delegação terrestre
+
+`backend/app/key_management.py` valida delegações JWT assinadas pela autoridade
+terrestre. A configuração (`VerificationKeySet`) tem de ser provisionada com o
+emissor e o conjunto explícito de `kid` confiáveis; cada chave contém apenas a
+chave pública PEM RSA (mínimo 2048 bits), finalidade e períodos explícitos de
+validade. A chave privada terrestre não deve ser distribuída ao serviço a bordo,
+e o `kid` nunca é usado para procurar chaves numa URL ou fonte indicada pelo
+token.
+
+O formato aceite é restrito:
+
+- Cabeçalho: exatamente `alg: RS256`, `kid` e `typ: mission-delegation+jwt`.
+- Claims: exatamente `iss`, `aud`, `iat`, `nbf`, `exp`, `jti` e `delegation`.
+- `aud` identifica o serviço a bordo esperado; `jti` corresponde ao UUID da
+  delegação. As datas NumericDate têm de corresponder aos instantes da delegação.
+- O verificador confere a assinatura, emissor, audiência, validade temporal da
+  delegação e janelas da chave, além dos identificadores esperados de missão e
+  serviço a bordo. A validação cruzada de validade, escopo e permissões entre
+  missão, serviço e delegação é feita por `MissionIdentityConfiguration` e
+  ainda não é invocada automaticamente pelo verificador.
+
+A suite cobre assinatura válida/adulterada, chave desconhecida ou revogada,
+rotação com chave retirada, cabeçalhos e claims não permitidos e datas e
+relações inválidas. Este verificador ainda não está ligado ao arranque da API,
+ao `AUTH_PUBLIC_KEY`, à persistência da configuração de missão, nem emite
+credenciais. A distribuição protegida das chaves públicas, persistência,
+revogação sincronizada e políticas temporais continuam por definir e validar;
+isto não constitui prontidão para uso com dados reais ou em missão.
+
 ## Arquitetura offline
 
 A decisão sobre responsabilidades, propriedade dos dados, fluxo entre
