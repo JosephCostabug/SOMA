@@ -31,10 +31,12 @@ from app.schemas import (
     TECHNICAL_LIMITS,
     GlucoseContext,
     HealthReading,
+    IndicatorCoverage,
     Metric,
     OfflineSyncBatchInput,
     ReadingBatchInput,
     ReadingAnalysis,
+    ReadingCoverage,
     ReadingHistory,
     SyncAcknowledgement,
     SyncAcknowledgementItem,
@@ -590,3 +592,83 @@ def analyze_readings(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Os dados persistidos não podem ser analisados com segurança.",
         ) from error
+
+
+@app.get(
+    "/api/v1/readings/coverage",
+    response_model=ReadingCoverage,
+    tags=["readings"],
+)
+def get_reading_coverage(
+    connection: Connection,
+    principal: CurrentPrincipal,
+    astronaut_id: Annotated[str, Query(min_length=1, max_length=100)],
+    start: datetime,
+    end: datetime,
+) -> ReadingCoverage:
+    if principal.actor_type != "user":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este endpoint requer uma identidade de utilizador.",
+        )
+    require_permission(principal, "readings:read")
+    require_astronaut_scope(principal, astronaut_id)
+
+    if start.tzinfo is None or start.utcoffset() is None:
+        raise HTTPException(status_code=422, detail="start tem de incluir fuso horário.")
+    if end.tzinfo is None or end.utcoffset() is None:
+        raise HTTPException(status_code=422, detail="end tem de incluir fuso horário.")
+    if start > end:
+        raise HTTPException(status_code=422, detail="start não pode ser posterior a end.")
+
+    try:
+        rows = connection.execute(
+            """
+            SELECT metric, COUNT(*) AS sample_count, MAX(measured_at) AS latest_measured_at
+            FROM health_readings
+            WHERE astronaut_id = ? AND measured_at >= ? AND measured_at <= ?
+            GROUP BY metric
+            """,
+            (
+                astronaut_id,
+                start.astimezone(timezone.utc).isoformat(),
+                end.astimezone(timezone.utc).isoformat(),
+            ),
+        ).fetchall()
+    except sqlite3.Error as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Não foi possível consultar a cobertura dos indicadores.",
+        ) from error
+
+    observed: dict[Metric, tuple[int, datetime | None]] = {}
+    try:
+        for row in rows:
+            metric = Metric(row["metric"])
+            latest_measured_at = (
+                datetime.fromisoformat(row["latest_measured_at"])
+                if row["latest_measured_at"] is not None
+                else None
+            )
+            observed[metric] = (row["sample_count"], latest_measured_at)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Os dados persistidos contêm um indicador ou instante inválido.",
+        ) from error
+
+    return ReadingCoverage(
+        astronaut_id=astronaut_id,
+        period_start=start.astimezone(timezone.utc),
+        period_end=end.astimezone(timezone.utc),
+        indicators=[
+            IndicatorCoverage(
+                metric=metric,
+                unit=METRIC_UNITS[metric],
+                sample_count=observed[metric][0] if metric in observed else 0,
+                latest_measured_at=observed[metric][1] if metric in observed else None,
+            )
+            for metric in Metric
+        ],
+        scope="observed_counts_only",
+    )

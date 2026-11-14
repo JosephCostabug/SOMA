@@ -186,6 +186,21 @@ class ReadingAnalysis(BaseModel):
     scope: Literal["descriptive_only"]
 
 
+class IndicatorCoverage(BaseModel):
+    metric: Metric
+    unit: str
+    sample_count: int
+    latest_measured_at: datetime | None
+
+
+class ReadingCoverage(BaseModel):
+    astronaut_id: str
+    period_start: datetime
+    period_end: datetime
+    indicators: list[IndicatorCoverage]
+    scope: Literal["observed_counts_only"]
+
+
 class SyncAcknowledgementItem(BaseModel):
     reading_id: UUID
     sequence_number: int

@@ -29,6 +29,9 @@ Define `HEALTH_DB_PATH` para escolher outro caminho.
 - `GET /api/v1/readings/analysis` — estatísticas descritivas e inclinação linear
   por dia para um indicador, astronauta e intervalo definidos (requer contexto
   explícito para glicemia; token de utilizador com `readings:read`).
+- `GET /api/v1/readings/coverage` — contagem observada e instante da última
+  medição de cada indicador num intervalo (token de utilizador com
+  `readings:read`).
 - `POST /api/v1/sync/readings` — recebe um lote offline limitado e idempotente,
   devolvendo confirmação por medição (token de dispositivo com `sync:write`,
   identidade igual a `source_device_id` e escopo para os astronautas do lote).
@@ -70,6 +73,10 @@ também é obrigatório para evitar misturar contextos de medição. A inclinaç
 as estatísticas são descritivas; não identificam anomalias nem substituem
 avaliação clínica. O endpoint não descarta valores silenciosamente; corrupção
 ou valores não finitos persistidos impedem a análise.
+
+O endpoint de cobertura mostra contagens observadas e a hora da última amostra,
+incluindo indicadores sem registos. Um zero não significa que uma medição era
+esperada ou está em falta: a cadência de recolha ainda não está definida.
 
 ## Autenticação e autorização
 

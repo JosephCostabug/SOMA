@@ -504,6 +504,50 @@ def test_glucose_analysis_requires_and_filters_context(tmp_path, monkeypatch):
     assert fasting.json()["glucose_context"] == "fasting"
 
 
+def test_reading_coverage_reports_observed_counts_without_claiming_missing_data(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HEALTH_DB_PATH", str(tmp_path / "health.sqlite3"))
+    headers = _authorization_headers()
+    start = datetime(2026, 11, 12, tzinfo=timezone.utc)
+    with TestClient(app) as client:
+        for day, heart_rate in enumerate((72, 74)):
+            created = client.post(
+                "/api/v1/readings",
+                json={
+                    "astronaut_id": "astronaut-01",
+                    "measured_at": (start + timedelta(days=day)).isoformat(),
+                    "measurements": [{"metric": "heart_rate", "value": heart_rate}],
+                },
+                headers=headers,
+            )
+            assert created.status_code == 201
+
+        response = client.get(
+            "/api/v1/readings/coverage",
+            params={
+                "astronaut_id": "astronaut-01",
+                "start": start.isoformat(),
+                "end": (start + timedelta(days=2)).isoformat(),
+            },
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["scope"] == "observed_counts_only"
+    assert len(result["indicators"]) == 8
+    heart_rate = next(
+        item for item in result["indicators"] if item["metric"] == "heart_rate"
+    )
+    mood = next(item for item in result["indicators"] if item["metric"] == "mood")
+    assert heart_rate["sample_count"] == 2
+    assert heart_rate["latest_measured_at"] == "2026-11-13T00:00:00Z"
+    assert mood["sample_count"] == 0
+    assert mood["latest_measured_at"] is None
+
+
 def test_indicator_catalog_includes_blood_oxygen():
     with TestClient(app) as client:
         response = client.get("/api/v1/indicators")
