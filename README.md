@@ -146,6 +146,16 @@ backend não retransmite para o sistema terrestre. O modo offline ainda não foi
 validado para operação espacial: requer testes de perda de ligação/reinício e
 revisão de segurança e missão antes de dados reais.
 
+## Modelos de identidade da missão
+
+Os modelos iniciais de missão, identidade e delegação estão em
+`backend/app/mission_identity.py`. Validam relações, missão, referências de
+chaves, escopos/permissões máximos e consistência temporal. Os tempos da
+delegação e a duração máxima dos tokens são obrigatórios, sem defaults, porque
+a política operacional ainda não foi decidida. Estes modelos não implementam
+provisionamento, persistência de identidades, gestão de chaves nem emissão de
+credenciais.
+
 ## Arquitetura offline
 
 A decisão sobre responsabilidades, propriedade dos dados, fluxo entre

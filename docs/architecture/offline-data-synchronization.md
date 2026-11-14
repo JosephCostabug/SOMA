@@ -76,6 +76,16 @@ desatualizadas até o token expirar; a validade offline e a resposta a
 revogação devem ser definidas e testadas antes de uso operacional. JWT não
 substitui TLS nem a autenticação mútua dos serviços.
 
+Os modelos iniciais de missão, identidade e delegação estão em
+`backend/app/mission_identity.py`. A configuração relaciona a autoridade
+terrestre e as suas chaves confiáveis, a missão, a identidade/chave do serviço
+a bordo e as delegações. Valida missão comum, unicidade de IDs, escopos e
+permissões máximas, referências de chaves e validade temporal consistente.
+Limites como duração máxima da delegação e duração máxima de tokens são campos
+obrigatórios, sem valores padrão: os tempos operacionais continuam por decidir.
+Estes modelos ainda não persistem identidades, verificam assinaturas de
+delegação nem emitem ou validam tokens.
+
 ## Fluxos de comunicação
 
 ```mermaid
