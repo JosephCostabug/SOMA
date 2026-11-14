@@ -167,6 +167,25 @@ class ReadingHistory(BaseModel):
     total: int
 
 
+class ReadingAnalysis(BaseModel):
+    astronaut_id: str
+    metric: Metric
+    unit: str
+    glucose_context: GlucoseContext | None
+    period_start: datetime
+    period_end: datetime
+    sample_count: int
+    minimum: float
+    maximum: float
+    mean: float
+    median: float
+    sample_standard_deviation: float | None
+    latest_value: float
+    latest_measured_at: datetime
+    trend_slope_per_day: float | None
+    scope: Literal["descriptive_only"]
+
+
 class SyncAcknowledgementItem(BaseModel):
     reading_id: UUID
     sequence_number: int

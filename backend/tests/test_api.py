@@ -418,6 +418,92 @@ def test_create_and_filter_readings(tmp_path, monkeypatch):
         assert history.json()["items"][0]["glucose_context"] == "fasting"
 
 
+def test_reading_analysis_returns_descriptive_statistics_and_trend(tmp_path, monkeypatch):
+    monkeypatch.setenv("HEALTH_DB_PATH", str(tmp_path / "health.sqlite3"))
+    headers = _authorization_headers()
+    start = datetime(2026, 11, 12, tzinfo=timezone.utc)
+    with TestClient(app) as client:
+        for day, heart_rate in enumerate((72, 74, 76)):
+            created = client.post(
+                "/api/v1/readings",
+                json={
+                    "astronaut_id": "astronaut-01",
+                    "measured_at": (start + timedelta(days=day)).isoformat(),
+                    "measurements": [{"metric": "heart_rate", "value": heart_rate}],
+                },
+                headers=headers,
+            )
+            assert created.status_code == 201
+
+        response = client.get(
+            "/api/v1/readings/analysis",
+            params={
+                "astronaut_id": "astronaut-01",
+                "metric": "heart_rate",
+                "start": start.isoformat(),
+                "end": (start + timedelta(days=2)).isoformat(),
+            },
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["sample_count"] == 3
+    assert result["minimum"] == 72
+    assert result["maximum"] == 76
+    assert result["mean"] == 74
+    assert result["median"] == 74
+    assert result["sample_standard_deviation"] == 2
+    assert result["latest_value"] == 76
+    assert result["trend_slope_per_day"] == pytest.approx(2)
+    assert result["scope"] == "descriptive_only"
+
+
+def test_glucose_analysis_requires_and_filters_context(tmp_path, monkeypatch):
+    monkeypatch.setenv("HEALTH_DB_PATH", str(tmp_path / "health.sqlite3"))
+    headers = _authorization_headers()
+    start = datetime(2026, 11, 14, tzinfo=timezone.utc)
+    with TestClient(app) as client:
+        for hour, value, context in (
+            (8, 95.5, "fasting"),
+            (12, 150.0, "after_meal"),
+        ):
+            created = client.post(
+                "/api/v1/readings",
+                json={
+                    "astronaut_id": "astronaut-01",
+                    "measured_at": (start + timedelta(hours=hour)).isoformat(),
+                    "measurements": [{"metric": "blood_glucose", "value": value}],
+                    "glucose_context": context,
+                },
+                headers=headers,
+            )
+            assert created.status_code == 201
+
+        params = {
+            "astronaut_id": "astronaut-01",
+            "metric": "blood_glucose",
+            "start": start.isoformat(),
+            "end": (start + timedelta(days=1)).isoformat(),
+        }
+        missing_context = client.get(
+            "/api/v1/readings/analysis",
+            params=params,
+            headers=headers,
+        )
+        fasting = client.get(
+            "/api/v1/readings/analysis",
+            params={**params, "glucose_context": "fasting"},
+            headers=headers,
+        )
+
+    assert missing_context.status_code == 422
+    assert fasting.status_code == 200
+    assert fasting.json()["sample_count"] == 1
+    assert fasting.json()["mean"] == 95.5
+    assert fasting.json()["glucose_context"] == "fasting"
+
+
 def test_indicator_catalog_includes_blood_oxygen():
     with TestClient(app) as client:
         response = client.get("/api/v1/indicators")

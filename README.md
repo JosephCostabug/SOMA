@@ -26,6 +26,9 @@ Define `HEALTH_DB_PATH` para escolher outro caminho.
 - `GET /api/v1/readings` — consulta histórico por astronauta, indicador e período,
   com paginação (token de utilizador com `readings:read` e escopo para o
   astronauta).
+- `GET /api/v1/readings/analysis` — estatísticas descritivas e inclinação linear
+  por dia para um indicador, astronauta e intervalo definidos (requer contexto
+  explícito para glicemia; token de utilizador com `readings:read`).
 - `POST /api/v1/sync/readings` — recebe um lote offline limitado e idempotente,
   devolvendo confirmação por medição (token de dispositivo com `sync:write`,
   identidade igual a `source_device_id` e escopo para os astronautas do lote).
@@ -59,6 +62,14 @@ valores e valida que a diastólica é inferior à sistólica.
 
 Os limites expostos são validações técnicas das entradas, não intervalos de
 normalidade, diagnósticos ou critérios de aptidão médica.
+
+A análise devolve quantidade, mínimo, máximo, média, mediana, desvio-padrão
+amostral, última medição e inclinação linear por dia. `start` e `end` são
+obrigatórios e devem incluir fuso horário. Para glicemia, `glucose_context`
+também é obrigatório para evitar misturar contextos de medição. A inclinação e
+as estatísticas são descritivas; não identificam anomalias nem substituem
+avaliação clínica. O endpoint não descarta valores silenciosamente; corrupção
+ou valores não finitos persistidos impedem a análise.
 
 ## Autenticação e autorização
 

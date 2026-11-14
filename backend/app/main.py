@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 
+from app.analysis import summarize_readings
 from app.auth import (
     CurrentPrincipal,
     require_astronaut_scope,
@@ -28,10 +29,12 @@ from app.provisioning import (
 from app.schemas import (
     METRIC_UNITS,
     TECHNICAL_LIMITS,
+    GlucoseContext,
     HealthReading,
     Metric,
     OfflineSyncBatchInput,
     ReadingBatchInput,
+    ReadingAnalysis,
     ReadingHistory,
     SyncAcknowledgement,
     SyncAcknowledgementItem,
@@ -494,3 +497,96 @@ def get_readings(
         ) from error
 
     return ReadingHistory(items=[_serialize_reading(row) for row in rows], total=total)
+
+
+@app.get(
+    "/api/v1/readings/analysis",
+    response_model=ReadingAnalysis,
+    tags=["readings"],
+)
+def analyze_readings(
+    connection: Connection,
+    principal: CurrentPrincipal,
+    astronaut_id: Annotated[str, Query(min_length=1, max_length=100)],
+    metric: Metric,
+    start: datetime,
+    end: datetime,
+    glucose_context: GlucoseContext | None = None,
+) -> ReadingAnalysis:
+    if principal.actor_type != "user":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este endpoint requer uma identidade de utilizador.",
+        )
+    require_permission(principal, "readings:read")
+    require_astronaut_scope(principal, astronaut_id)
+
+    if start.tzinfo is None or start.utcoffset() is None:
+        raise HTTPException(status_code=422, detail="start tem de incluir fuso horário.")
+    if end.tzinfo is None or end.utcoffset() is None:
+        raise HTTPException(status_code=422, detail="end tem de incluir fuso horário.")
+    if start > end:
+        raise HTTPException(status_code=422, detail="start não pode ser posterior a end.")
+    if metric == Metric.BLOOD_GLUCOSE and glucose_context is None:
+        raise HTTPException(
+            status_code=422,
+            detail="glucose_context é obrigatório para analisar glicemia.",
+        )
+    if metric != Metric.BLOOD_GLUCOSE and glucose_context is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="glucose_context só pode ser usado na análise de glicemia.",
+        )
+
+    conditions = [
+        "astronaut_id = ?",
+        "metric = ?",
+        "measured_at >= ?",
+        "measured_at <= ?",
+    ]
+    parameters: list[object] = [
+        astronaut_id,
+        metric.value,
+        start.astimezone(timezone.utc).isoformat(),
+        end.astimezone(timezone.utc).isoformat(),
+    ]
+    if glucose_context is not None:
+        conditions.append("glucose_context = ?")
+        parameters.append(glucose_context.value)
+
+    try:
+        rows = connection.execute(
+            f"""
+            SELECT value, measured_at
+            FROM health_readings
+            WHERE {" AND ".join(conditions)}
+            ORDER BY measured_at, id
+            """,
+            parameters,
+        ).fetchall()
+    except sqlite3.Error as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Não foi possível consultar os dados para análise.",
+        ) from error
+
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Não existem medições no período e contexto solicitados.",
+        )
+
+    try:
+        return summarize_readings(
+            [dict(row) for row in rows],
+            astronaut_id=astronaut_id,
+            metric=metric,
+            glucose_context=glucose_context,
+            period_start=start.astimezone(timezone.utc),
+            period_end=end.astimezone(timezone.utc),
+        )
+    except (TypeError, ValueError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Os dados persistidos não podem ser analisados com segurança.",
+        ) from error
