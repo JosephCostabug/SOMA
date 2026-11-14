@@ -118,19 +118,50 @@ do [SOMA Browser](https://soma.weill.cornell.edu/apps/SOMA_Browser/) é útil
 para explorar as análises omics, mas não é, por si só, prova de que os registos
 brutos de AMS ou wearable estejam disponíveis sem autorização.
 
-Até esta revisão, o único accession OSDR da missão confirmado com ficheiros
-listáveis diretamente foi **OSD-575**. A lista oficial de
-[ficheiros de OSD-575](https://visualization.osdr.nasa.gov/biodata/api/v2/dataset/OSD-575/files/)
-contém painéis séricos metabólico, imune e cardiovascular, além do pacote de
-metadados ISA; não contém ficheiros identificados como sono, AMS, HR, HRV,
-SpO₂ ou ECG. Não foi possível confirmar nos catálogos públicos consultados um
-accession ou download separado para essas modalidades. Isto é um resultado
-negativo da pesquisa realizada, não prova de que os dados não existam nos
-repositórios controlados.
+### Série pública OSDR da missão
+
+A API biológica oficial confirmou sete registos consecutivos com missão
+Inspiration4 e inventários de ficheiros, **OSD-569 a OSD-575**. Os títulos,
+descrições, materiais e nomes de ficheiros indicam estes conteúdos:
+
+| Accession | Conteúdo indicado pelo registo e inventário OSDR | Relevância para o backend |
+|---|---|---|
+| [OSD-569](https://osdr.nasa.gov/bio/repo/data/studies/OSD-569) | Sangue total; inclui hemograma completo (CBC), RNA-seq, m6A, WGS e hematopoiese clonal. Há ficheiros CSV do CBC submetidos e transformados. | CBC é medição laboratorial; não é pressão arterial nem sinal vital contínuo. |
+| [OSD-570](https://osdr.nasa.gov/bio/repo/data/studies/OSD-570) | PBMC: snRNA-seq, snATAC-seq e perfis de repertório T/B. | Pesquisa molecular/celular; não é telemetria clínica. |
+| [OSD-571](https://osdr.nasa.gov/bio/repo/data/studies/OSD-571) | Plasma: proteómica, vesículas extracelulares, metabolómica, cfDNA e cfRNA. | Ensaios de laboratório e multi-omics; não equivale a sinais vitais. |
+| [OSD-572](https://osdr.nasa.gov/bio/repo/data/studies/OSD-572) | Zaragatoas orais, nasais e da pele; metagenómica e metatranscriptómica. | Microbioma; fora do escopo atual de sinais vitais/sono. |
+| [OSD-573](https://osdr.nasa.gov/bio/repo/data/studies/OSD-573) | Zaragatoas de superfícies da cápsula Dragon; metagenómica e metatranscriptómica. | Microbioma ambiental, não medição do astronauta. |
+| [OSD-574](https://osdr.nasa.gov/bio/repo/data/studies/OSD-574) | Biópsias de pele deltoide, transcriptómica espacial e dados de microbioma. | Tecido/omics; não é sinal vital. |
+| [OSD-575](https://osdr.nasa.gov/bio/repo/data/studies/OSD-575) | Soro: painel metabólico abrangente e painéis imune/cardiovascular. | Biomarcadores séricos, não HR, pressão arterial ou série contínua. |
+
+As listas de ficheiros foram consultadas pela
+[API oficial OSDR](https://visualization.osdr.nasa.gov/biodata/api/), sem
+transferir conteúdo biomédico. A pesquisa por nomes de ficheiros não encontrou
+sono, AMS, HR, HRV, SpO₂ ou ECG nos sete inventários. Isto não prova que essas
+medidas estejam ausentes de todos os repositórios: o artigo também aponta para
+SOMA e TRISH EXPAND/TrialX.
+
+**Acesso por ficheiro:** a documentação OSDR diz que a restrição pode variar
+dentro de um mesmo estudo. O estado deve ser verificado no separador Files da
+página de cada estudo (ícone de cadeado e botão de pedido de acesso); a simples
+presença do nome numa resposta da API não demonstra permissão para descarregar,
+reutilizar ou redistribuir. Para ficheiros controlados, o processo oficial
+solicita formulário, aprovação IRB, verificação de afiliação, avaliação do
+comité de acesso e aceitação do Data User Agreement. A autorização limita
+finalidade e período, exige salvaguarda/eliminação de cópias e define citações
+e créditos. Ver [Request Controlled Access Datasets from OSDR](https://osdr-tutorials.readthedocs.io/en/latest/pages/guides/request_controlled_access_datasets.html).
+
+O [SOMA Browser](https://soma.weill.cornell.edu/apps/SOMA_Browser/) identifica
+análises e publicações relacionadas com Inspiration4, incluindo dados
+multi-omics. A página informa também que o conteúdo do site é protegido por
+direitos autorais salvo indicação em contrário. A disponibilidade de um
+visualizador público não confirma licença ou autorização para extrair e
+incorporar dados de participantes no backend.
 
 ### Decisão para a integração
 
-1. Manter OSD-575 como referência de ensaios séricos, separado dos sinais
+1. Manter OSD-569 a OSD-575 como fontes de pesquisa distintas e tipadas
+   (hemograma, omics, microbioma e ensaios séricos); não os misturar com sinais
    biométricos em tempo real.
 2. Não copiar nem integrar dados individuais de AMS ou wearable até obter o
    accession e ficheiro exatos, documentação de campos/unidades, condições de
@@ -213,3 +244,6 @@ oficial do estudo nem os termos do titular dos dados.
    [SOMA Browser](https://soma.weill.cornell.edu/apps/SOMA_Browser/). A página do
    browser indica que o conteúdo do site é protegido por direitos autorais salvo
    indicação em contrário; isso não define, por si só, a licença de cada dataset.
+10. **NASA OSDR Tutorials.** [Acesso a datasets controlados](https://osdr-tutorials.readthedocs.io/en/latest/pages/guides/request_controlled_access_datasets.html)
+    e [uso da Biological Data API](https://osdr-tutorials.readthedocs.io/en/latest/pages/guides/biological_data_api.html).
+    Consultado em 2026-11-14.
