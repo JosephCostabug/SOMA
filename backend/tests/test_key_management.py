@@ -14,11 +14,23 @@ from app.key_management import (
     KeyConfigurationError,
     KeyPurpose,
     KeyState,
+    MissionIdentityConfigurationError,
     VerificationKey,
     VerificationKeySet,
+    load_signed_mission_identity_configuration,
     verify_ground_delegation,
 )
-from app.mission_identity import ActorType, DelegationState, MissionDelegation
+from app.mission_identity import (
+    ActorType,
+    DelegationState,
+    GroundIdentityAuthority,
+    IdentityState,
+    Mission,
+    MissionDelegation,
+    MissionIdentity,
+    MissionIdentityConfiguration,
+    MissionState,
+)
 
 
 UTC = timezone.utc
@@ -130,12 +142,198 @@ def _verify(token, *, now=None, key_set=None, mission_id=MISSION_ID):
     )
 
 
+def _base_configuration(now=None, *, delegations=()):
+    now = now or _now()
+    mission_start = now - timedelta(days=1)
+    mission_end = now + timedelta(days=1)
+    return MissionIdentityConfiguration(
+        mission=Mission(
+            mission_id=MISSION_ID,
+            state=MissionState.ACTIVE,
+            valid_from=mission_start,
+            expires_at=mission_end,
+        ),
+        ground_authority=GroundIdentityAuthority(
+            issuer=ISSUER,
+            trusted_key_ids=frozenset({GROUND_KEY_ID}),
+        ),
+        identities=(
+            MissionIdentity(
+                identity_id=ONBOARD_SERVICE_ID,
+                mission_id=MISSION_ID,
+                actor_type=ActorType.SERVICE,
+                state=IdentityState.ACTIVE,
+                permissions=frozenset({"readings:read", "sync:write"}),
+                astronaut_ids=frozenset({"astronaut-01", "astronaut-02"}),
+                valid_from=mission_start,
+                expires_at=mission_end,
+                key_id=ONBOARD_KEY_ID,
+                public_key_thumbprint="sha256:onboard-key-thumbprint",
+            ),
+        ),
+        delegations=delegations,
+    )
+
+
 def test_verifies_ground_signed_delegation_against_pinned_key():
     delegation = _delegation()
 
     verified = _verify(_signed_delegation(delegation))
 
     assert verified == delegation
+
+
+def test_loads_configuration_only_after_verifying_signed_delegation():
+    now = _now()
+    configuration = _base_configuration(now)
+
+    loaded = load_signed_mission_identity_configuration(
+        configuration,
+        signed_delegation_tokens=(_signed_delegation(_delegation(now)),),
+        key_set=_key_set(),
+        expected_onboard_service_id=ONBOARD_SERVICE_ID,
+        now=now,
+    )
+
+    assert loaded.mission == configuration.mission
+    assert loaded.delegations == (_delegation(now),)
+
+
+def test_loader_rejects_unsigned_configuration_delegations():
+    configuration = _base_configuration(delegations=(_delegation(),))
+
+    with pytest.raises(
+        MissionIdentityConfigurationError,
+        match="sem verificação criptográfica",
+    ):
+        load_signed_mission_identity_configuration(
+            configuration,
+            signed_delegation_tokens=(_signed_delegation(),),
+            key_set=_key_set(),
+            expected_onboard_service_id=ONBOARD_SERVICE_ID,
+            now=_now(),
+        )
+
+
+def test_loader_requires_matching_authority_and_key_set():
+    now = _now()
+    configuration = _base_configuration(now)
+
+    with pytest.raises(MissionIdentityConfigurationError, match="não corresponde"):
+        load_signed_mission_identity_configuration(
+            configuration,
+            signed_delegation_tokens=(_signed_delegation(_delegation(now)),),
+            key_set=_key_set(
+                _verification_key(issuer="another-ground"),
+                issuer="another-ground",
+            ),
+            expected_onboard_service_id=ONBOARD_SERVICE_ID,
+            now=now,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mission_overrides", "identity_overrides", "message"),
+    [
+        ({"state": MissionState.SUSPENDED}, {}, "missão tem de estar ativa"),
+        (
+            {
+                "valid_from": _now() - timedelta(days=3),
+                "expires_at": _now() - timedelta(days=1),
+            },
+            {},
+            "período de validade",
+        ),
+        ({}, {"state": IdentityState.SUSPENDED}, "serviço a bordo esperado"),
+    ],
+)
+def test_loader_rejects_inactive_or_out_of_scope_configuration(
+    mission_overrides, identity_overrides, message
+):
+    now = _now()
+    configuration = _base_configuration(now)
+    if mission_overrides:
+        configuration = configuration.model_copy(
+            update={"mission": configuration.mission.model_copy(update=mission_overrides)}
+        )
+    if identity_overrides:
+        identities = (
+            configuration.identities[0].model_copy(update=identity_overrides),
+        )
+        configuration = configuration.model_copy(update={"identities": identities})
+
+    with pytest.raises(MissionIdentityConfigurationError, match=message):
+        load_signed_mission_identity_configuration(
+            configuration,
+            signed_delegation_tokens=(_signed_delegation(_delegation(now)),),
+            key_set=_key_set(),
+            expected_onboard_service_id=ONBOARD_SERVICE_ID,
+            now=now,
+        )
+
+
+@pytest.mark.parametrize(
+    ("delegation_overrides", "message"),
+    [
+        ({"permissions": {"admin:all"}}, "não correspondem à configuração"),
+        ({"astronaut_ids": {"astronaut-99"}}, "não correspondem à configuração"),
+        ({"onboard_key_id": "unexpected-key"}, "não correspondem à configuração"),
+        ({"expires_at": _now() + timedelta(days=2)}, "não correspondem à configuração"),
+    ],
+)
+def test_loader_rejects_signed_delegation_outside_configured_bounds(
+    delegation_overrides, message
+):
+    now = _now()
+    configuration = _base_configuration(now)
+    delegation = _delegation(now, **delegation_overrides)
+
+    with pytest.raises(MissionIdentityConfigurationError, match=message):
+        load_signed_mission_identity_configuration(
+            configuration,
+            signed_delegation_tokens=(_signed_delegation(delegation),),
+            key_set=_key_set(),
+            expected_onboard_service_id=ONBOARD_SERVICE_ID,
+            now=now,
+        )
+
+
+def test_loader_requires_at_least_one_signed_delegation():
+    now = _now()
+
+    with pytest.raises(MissionIdentityConfigurationError, match="pelo menos uma"):
+        load_signed_mission_identity_configuration(
+            _base_configuration(now),
+            signed_delegation_tokens=(),
+            key_set=_key_set(),
+            expected_onboard_service_id=ONBOARD_SERVICE_ID,
+            now=now,
+        )
+
+
+def test_loader_rejects_duplicate_signed_delegations():
+    now = _now()
+    token = _signed_delegation(_delegation(now))
+
+    with pytest.raises(MissionIdentityConfigurationError, match="não correspondem"):
+        load_signed_mission_identity_configuration(
+            _base_configuration(now),
+            signed_delegation_tokens=(token, token),
+            key_set=_key_set(),
+            expected_onboard_service_id=ONBOARD_SERVICE_ID,
+            now=now,
+        )
+
+
+def test_loader_rejects_naive_current_time():
+    with pytest.raises(MissionIdentityConfigurationError, match="fuso horário"):
+        load_signed_mission_identity_configuration(
+            _base_configuration(),
+            signed_delegation_tokens=(_signed_delegation(),),
+            key_set=_key_set(),
+            expected_onboard_service_id=ONBOARD_SERVICE_ID,
+            now=datetime(2030, 1, 1),
+        )
 
 
 @pytest.mark.parametrize(

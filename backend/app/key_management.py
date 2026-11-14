@@ -10,7 +10,11 @@ from jwt.exceptions import InvalidKeyError, InvalidTokenError
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.mission_identity import (
+    ActorType,
     DelegationState,
+    IdentityState,
+    MissionIdentityConfiguration,
+    MissionState,
     MissionDelegation,
 )
 
@@ -32,6 +36,10 @@ class KeyConfigurationError(ValueError):
 
 
 class DelegationVerificationError(ValueError):
+    pass
+
+
+class MissionIdentityConfigurationError(ValueError):
     pass
 
 
@@ -231,3 +239,78 @@ def verify_ground_delegation(
             "A delegação não corresponde à autoridade, missão ou validade esperada."
         )
     return delegation
+
+
+def load_signed_mission_identity_configuration(
+    configuration: MissionIdentityConfiguration,
+    *,
+    signed_delegation_tokens: tuple[str, ...],
+    key_set: VerificationKeySet,
+    expected_onboard_service_id: str,
+    now: datetime,
+) -> MissionIdentityConfiguration:
+    """Load mission identity configuration using only signed ground delegations."""
+    try:
+        current_time = _utc(now, "now")
+    except ValueError as error:
+        raise MissionIdentityConfigurationError(str(error)) from error
+
+    if configuration.delegations:
+        raise MissionIdentityConfigurationError(
+            "A configuração base não pode conter delegações sem verificação criptográfica."
+        )
+    if not signed_delegation_tokens:
+        raise MissionIdentityConfigurationError(
+            "É necessária pelo menos uma delegação terrestre assinada."
+        )
+    if (
+        key_set.issuer != configuration.ground_authority.issuer
+        or key_set.trusted_key_ids != configuration.ground_authority.trusted_key_ids
+    ):
+        raise MissionIdentityConfigurationError(
+            "O conjunto de chaves não corresponde à autoridade terrestre configurada."
+        )
+    if configuration.mission.state != MissionState.ACTIVE:
+        raise MissionIdentityConfigurationError(
+            "A missão tem de estar ativa para carregar delegações."
+        )
+    if not configuration.mission.valid_from <= current_time < configuration.mission.expires_at:
+        raise MissionIdentityConfigurationError(
+            "A missão não está dentro do seu período de validade."
+        )
+
+    onboard_identity = next(
+        (
+            identity
+            for identity in configuration.identities
+            if identity.identity_id == expected_onboard_service_id
+        ),
+        None,
+    )
+    if (
+        onboard_identity is None
+        or onboard_identity.actor_type != ActorType.SERVICE
+        or onboard_identity.state not in {IdentityState.PROVISIONED, IdentityState.ACTIVE}
+    ):
+        raise MissionIdentityConfigurationError(
+            "O serviço a bordo esperado não está provisionado e ativo."
+        )
+
+    delegations = tuple(
+        verify_ground_delegation(
+            token,
+            key_set=key_set,
+            expected_mission_id=configuration.mission.mission_id,
+            expected_onboard_service_id=expected_onboard_service_id,
+            now=current_time,
+        )
+        for token in signed_delegation_tokens
+    )
+    configuration_data = configuration.model_dump(mode="python")
+    configuration_data["delegations"] = delegations
+    try:
+        return MissionIdentityConfiguration.model_validate(configuration_data)
+    except ValueError as error:
+        raise MissionIdentityConfigurationError(
+            "As delegações assinadas não correspondem à configuração da missão."
+        ) from error

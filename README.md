@@ -180,11 +180,18 @@ O formato aceite é restrito:
 
 A suite cobre assinatura válida/adulterada, chave desconhecida ou revogada,
 rotação com chave retirada, cabeçalhos e claims não permitidos e datas e
-relações inválidas. Este verificador ainda não está ligado ao arranque da API,
-ao `AUTH_PUBLIC_KEY`, à persistência da configuração de missão, nem emite
-credenciais. A distribuição protegida das chaves públicas, persistência,
-revogação sincronizada e políticas temporais continuam por definir e validar;
-isto não constitui prontidão para uso com dados reais ou em missão.
+relações inválidas. `load_signed_mission_identity_configuration()` recebe uma
+configuração-base sem delegações, os JWTs assinados e o conjunto de chaves
+provisionadas. Rejeita autoridade/chaves divergentes, missão inativa ou fora da
+validade, serviço a bordo não provisionado, delegações pré-carregadas sem prova
+criptográfica e delegações que excedam a missão, o serviço, os escopos ou as
+permissões. O resultado é uma configuração imutável validada.
+
+Esta função ainda não está ligada ao arranque da API, ao `AUTH_PUBLIC_KEY` ou a
+uma fonte persistente/segura de configuração; também não emite credenciais. A
+distribuição protegida das chaves públicas, persistência, revogação sincronizada
+e políticas temporais continuam por definir e validar. Isto não constitui
+prontidão para uso com dados reais ou em missão.
 
 ## Arquitetura offline
 
