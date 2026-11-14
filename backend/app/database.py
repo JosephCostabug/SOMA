@@ -42,7 +42,9 @@ def initialize_database() -> None:
                 value REAL NOT NULL,
                 unit TEXT NOT NULL,
                 measured_at TEXT NOT NULL,
-                glucose_context TEXT
+                glucose_context TEXT,
+                received_at TEXT,
+                declared_origin TEXT NOT NULL DEFAULT 'manual'
             )
             """
         )
@@ -56,6 +58,15 @@ def initialize_database() -> None:
             connection.execute("ALTER TABLE health_readings ADD COLUMN source_device_id TEXT")
         if "sequence_number" not in columns:
             connection.execute("ALTER TABLE health_readings ADD COLUMN sequence_number INTEGER")
+        if "received_at" not in columns:
+            connection.execute("ALTER TABLE health_readings ADD COLUMN received_at TEXT")
+        if "declared_origin" not in columns:
+            connection.execute(
+                """
+                ALTER TABLE health_readings
+                ADD COLUMN declared_origin TEXT NOT NULL DEFAULT 'manual'
+                """
+            )
         reading_id_index = connection.execute(
             """
             SELECT sql FROM sqlite_master
@@ -97,6 +108,42 @@ def initialize_database() -> None:
                 received_at TEXT NOT NULL,
                 status TEXT NOT NULL CHECK (status = 'persisted')
             )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ingestion_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                astronaut_id TEXT,
+                declared_origin TEXT NOT NULL
+                    CHECK (declared_origin IN ('nasa', 'simulated', 'manual', 'unknown')),
+                outcome TEXT NOT NULL
+                    CHECK (outcome IN ('duplicate', 'rejected', 'conflict')),
+                record_count INTEGER NOT NULL DEFAULT 1 CHECK (record_count >= 1),
+                occurred_at TEXT NOT NULL
+            )
+            """
+        )
+        event_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(ingestion_events)")
+        }
+        if "record_count" not in event_columns:
+            connection.execute(
+                """
+                ALTER TABLE ingestion_events
+                ADD COLUMN record_count INTEGER NOT NULL DEFAULT 1
+                """
+            )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_ingestion_events_astronaut_time
+            ON ingestion_events (astronaut_id, occurred_at, outcome)
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_health_readings_astronaut_received
+            ON health_readings (astronaut_id, received_at)
             """
         )
         connection.execute(

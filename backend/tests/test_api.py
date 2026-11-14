@@ -548,6 +548,155 @@ def test_reading_coverage_reports_observed_counts_without_claiming_missing_data(
     assert mood["latest_measured_at"] is None
 
 
+def test_operations_summary_reports_origins_receipts_rejections_duplicates_and_conflicts(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HEALTH_DB_PATH", str(tmp_path / "health.sqlite3"))
+    headers = _authorization_headers()
+    start = datetime.now(timezone.utc) - timedelta(minutes=2)
+    batch = {
+        "batch_id": "c54d86ca-59f9-41b6-9dbb-f18b3976fc31",
+        "source_device_id": _DEVICE_ID,
+        "readings": [
+            {
+                "astronaut_id": "astronaut-01",
+                "measured_at": start.isoformat(),
+                "declared_origin": "simulated",
+                "measurements": [
+                    {
+                        "reading_id": "f59b83f0-56a8-47f3-874d-ed940f65d346",
+                        "metric": "heart_rate",
+                        "value": 72,
+                        "sequence_number": 12,
+                    }
+                ],
+            }
+        ],
+    }
+
+    with TestClient(app) as client:
+        manual = client.post(
+            "/api/v1/readings",
+            json={
+                "astronaut_id": "astronaut-01",
+                "measured_at": start.isoformat(),
+                "measurements": [{"metric": "mood", "value": 4}],
+            },
+            headers=headers,
+        )
+        simulated = client.post(
+            "/api/v1/sync/readings",
+            json=batch,
+            headers=_device_headers(),
+        )
+        duplicate = client.post(
+            "/api/v1/sync/readings",
+            json={
+                **batch,
+                "batch_id": "825ee45b-90cd-4bd0-9e45-e457445b5c78",
+            },
+            headers=_device_headers(),
+        )
+        rejected = client.post(
+            "/api/v1/readings",
+            json={
+                "astronaut_id": "astronaut-01",
+                "measured_at": start.isoformat(),
+                "measurements": [{"metric": "heart_rate", "value": 10}],
+            },
+            headers=headers,
+        )
+        conflict = client.post(
+            "/api/v1/sync/readings",
+            json={
+                **batch,
+                "batch_id": "f3a5bdb4-19bc-4fa2-92e4-6f999f531c55",
+                "readings": [
+                    {
+                        **batch["readings"][0],
+                        "measurements": [
+                            {
+                                **batch["readings"][0]["measurements"][0],
+                                "reading_id": "12a2452f-4de5-43eb-b42a-a88723b9df88",
+                                "sequence_number": 12,
+                            }
+                        ],
+                    }
+                ],
+            },
+            headers=_device_headers(),
+        )
+        summary = client.get(
+            "/api/v1/readings/operations-summary",
+            params={
+                "astronaut_id": "astronaut-01",
+                "start": (start - timedelta(minutes=1)).isoformat(),
+                "end": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+            },
+            headers=headers,
+        )
+        out_of_scope = client.get(
+            "/api/v1/readings/operations-summary",
+            params={
+                "astronaut_id": "astronaut-01",
+                "start": (start - timedelta(minutes=1)).isoformat(),
+                "end": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+            },
+            headers=_authorization_headers(astronaut_ids=["astronaut-02"]),
+        )
+
+    assert manual.status_code == 201
+    assert simulated.status_code == 200
+    assert duplicate.status_code == 200
+    assert duplicate.json()["items"][0]["status"] == "already_received"
+    assert rejected.status_code == 422
+    assert conflict.status_code == 409
+    assert summary.status_code == 200
+    assert out_of_scope.status_code == 403
+    result = summary.json()
+    assert result["valid_record_count"] == 2
+    assert result["rejected_record_count"] == 1
+    assert result["duplicate_record_count"] == 1
+    assert result["conflict_record_count"] == 1
+    assert result["last_received_at"] is not None
+    assert result["records_without_receipt_time"] == 0
+    assert {
+        origin["declared_origin"]: origin["record_count"]
+        for origin in result["origins"]
+    } == {"manual": 1, "simulated": 1, "nasa": 0}
+    heart_rate = next(
+        item for item in result["indicators"] if item["metric"] == "heart_rate"
+    )
+    assert heart_rate["valid_record_count"] == 1
+    assert heart_rate["latest_received_at"] is not None
+    assert simulated.json()["items"][0]["status"] == "accepted"
+
+
+def test_unauthenticated_invalid_ingestion_is_not_counted_as_rejected_data(
+    tmp_path,
+    monkeypatch,
+):
+    database_path = tmp_path / "health.sqlite3"
+    monkeypatch.setenv("HEALTH_DB_PATH", str(database_path))
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/readings",
+            json={
+                "astronaut_id": "astronaut-01",
+                "measured_at": "2026-11-14T16:00:00Z",
+                "measurements": [{"metric": "heart_rate", "value": 10}],
+            },
+        )
+        with sqlite3.connect(database_path) as connection:
+            rejected_count = connection.execute(
+                "SELECT COUNT(*) FROM ingestion_events WHERE outcome = 'rejected'"
+            ).fetchone()[0]
+
+    assert response.status_code in {401, 422}
+    assert rejected_count == 0
+
+
 def test_indicator_catalog_includes_blood_oxygen():
     with TestClient(app) as client:
         response = client.get("/api/v1/indicators")

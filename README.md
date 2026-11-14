@@ -32,6 +32,9 @@ Define `HEALTH_DB_PATH` para escolher outro caminho.
 - `GET /api/v1/readings/coverage` — contagem observada e instante da última
   medição de cada indicador num intervalo (token de utilizador com
   `readings:read`).
+- `GET /api/v1/readings/operations-summary` — resumo por astronauta e período
+  com registos válidos, rejeitados, duplicados, conflitos, última recepção e
+  origem declarada (token de utilizador com `readings:read`).
 - `POST /api/v1/sync/readings` — recebe um lote offline limitado e idempotente,
   devolvendo confirmação por medição (token de dispositivo com `sync:write`,
   identidade igual a `source_device_id` e escopo para os astronautas do lote).
@@ -77,6 +80,16 @@ ou valores não finitos persistidos impedem a análise.
 O endpoint de cobertura mostra contagens observadas e a hora da última amostra,
 incluindo indicadores sem registos. Um zero não significa que uma medição era
 esperada ou está em falta: a cadência de recolha ainda não está definida.
+
+O resumo operacional filtra pela hora de recepção e apresenta as contagens
+válidas por indicador e origem. `declared_origin` aceita `manual`, `simulated`
+ou `nasa`; é uma declaração fornecida pelo emissor, não prova de proveniência.
+Até haver um conector NASA autenticado, nenhum registo de origem NASA é
+verificado. As rejeições e conflitos guardam apenas astronauta (quando
+identificável), origem declarada, resultado e instante; o payload biométrico
+inválido não é copiado para o registo de auditoria. Dados preexistentes sem
+`received_at` mantêm esse instante desconhecido e são contabilizados
+separadamente, sem inferi-lo a partir do instante de medição.
 
 ## Autenticação e autorização
 

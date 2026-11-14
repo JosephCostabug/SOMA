@@ -245,12 +245,14 @@ def get_current_principal(
         validated_actor_type = "user"
     else:
         validated_actor_type = "device"
-    return Principal(
+    principal = Principal(
         subject=subject,
         actor_type=validated_actor_type,
         astronaut_ids=token_astronaut_ids,
         permissions=token_permissions,
     )
+    request.state.authenticated_principal = principal
+    return principal
 
 
 CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]

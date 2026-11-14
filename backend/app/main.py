@@ -4,10 +4,15 @@ import hashlib
 import json
 import os
 import sqlite3
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi.exception_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+)
+from fastapi.exceptions import RequestValidationError
 
 from app.analysis import summarize_readings
 from app.auth import (
@@ -29,15 +34,19 @@ from app.provisioning import (
 from app.schemas import (
     METRIC_UNITS,
     TECHNICAL_LIMITS,
+    DataOrigin,
     GlucoseContext,
     HealthReading,
     IndicatorCoverage,
     Metric,
     OfflineSyncBatchInput,
+    OperationsIndicatorCount,
     ReadingBatchInput,
     ReadingAnalysis,
     ReadingCoverage,
     ReadingHistory,
+    ReadingOperationsSummary,
+    OriginCount,
     SyncAcknowledgement,
     SyncAcknowledgementItem,
     SyncBatchStatus,
@@ -104,6 +113,44 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+@app.exception_handler(RequestValidationError)
+async def record_invalid_ingestion(
+    request: Request,
+    error: RequestValidationError,
+):
+    if request.url.path in {"/api/v1/readings", "/api/v1/sync/readings"}:
+        astronaut_id, declared_origin, record_count = _validation_event_context(
+            error.body
+        )
+        principal = getattr(request.state, "authenticated_principal", None)
+        if principal is not None and principal.actor_type in {"user", "device"}:
+            if astronaut_id not in principal.astronaut_ids:
+                astronaut_id = None
+            _record_ingestion_event(
+                astronaut_id=astronaut_id,
+                declared_origin=declared_origin,
+                outcome="rejected",
+                record_count=record_count,
+            )
+    return await request_validation_exception_handler(request, error)
+
+
+@app.exception_handler(HTTPException)
+async def record_ingestion_conflicts(request: Request, error: HTTPException):
+    if (
+        error.status_code == status.HTTP_409_CONFLICT
+        and request.url.path in {"/api/v1/readings", "/api/v1/sync/readings"}
+    ):
+        _record_ingestion_event(
+            astronaut_id=getattr(request.state, "ingestion_astronaut_id", None),
+            declared_origin=getattr(request.state, "ingestion_origin", "unknown"),
+            outcome="conflict",
+            record_count=getattr(request.state, "ingestion_record_count", 1),
+        )
+    return await http_exception_handler(request, error)
+
+
 Connection = Annotated[sqlite3.Connection, Depends(get_connection)]
 
 
@@ -116,10 +163,73 @@ def _serialize_reading(row: sqlite3.Row) -> HealthReading:
         value=row["value"],
         unit=row["unit"],
         measured_at=datetime.fromisoformat(row["measured_at"]),
+        received_at=(
+            datetime.fromisoformat(row["received_at"])
+            if row["received_at"] is not None
+            else None
+        ),
         glucose_context=row["glucose_context"],
+        declared_origin=row["declared_origin"],
+        origin_verification="unverified_declaration",
         source_device_id=row["source_device_id"],
         sequence_number=row["sequence_number"],
     )
+
+
+def _record_ingestion_event(
+    *,
+    astronaut_id: str | None,
+    declared_origin: str,
+    outcome: str,
+    record_count: int = 1,
+) -> None:
+    if declared_origin not in {origin.value for origin in DataOrigin}:
+        declared_origin = "unknown"
+    connection = connect_database()
+    try:
+        connection.execute(
+            """
+            INSERT INTO ingestion_events (
+                astronaut_id, declared_origin, outcome, record_count, occurred_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                astronaut_id,
+                declared_origin,
+                outcome,
+                max(record_count, 1),
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _validation_event_context(body: Any) -> tuple[str | None, str, int]:
+    if not isinstance(body, dict):
+        return None, "unknown", 1
+    astronaut_id = body.get("astronaut_id")
+    origin = body.get("declared_origin", DataOrigin.MANUAL.value)
+    record_count = len(body.get("measurements", [])) if isinstance(
+        body.get("measurements"), list
+    ) else 1
+    if astronaut_id is None and isinstance(body.get("readings"), list):
+        readings = body["readings"]
+        record_count = sum(
+            len(reading.get("measurements", []))
+            for reading in readings
+            if isinstance(reading, dict)
+            and isinstance(reading.get("measurements"), list)
+        )
+        if readings and isinstance(readings[0], dict):
+            astronaut_id = readings[0].get("astronaut_id")
+            origin = readings[0].get("declared_origin", DataOrigin.MANUAL.value)
+    if not isinstance(astronaut_id, str) or not astronaut_id or len(astronaut_id) > 100:
+        astronaut_id = None
+    if not isinstance(origin, str) or origin not in {item.value for item in DataOrigin}:
+        origin = "unknown"
+    return astronaut_id, origin, max(record_count, 1)
 
 
 def _persist_readings(
@@ -165,6 +275,23 @@ def _persist_readings(
                         )
                         for row in rows
                     )
+                    received_at = datetime.now(timezone.utc).isoformat()
+                    connection.executemany(
+                        """
+                        INSERT INTO ingestion_events (
+                            astronaut_id, declared_origin, outcome, occurred_at
+                        ) VALUES (?, ?, 'duplicate', ?)
+                        """,
+                        [
+                            (
+                                payload.astronaut_id,
+                                payload.declared_origin.value,
+                                received_at,
+                            )
+                            for payload, _, _ in reading_batches
+                            for _ in payload.measurements
+                        ],
+                    )
                     if sync_batch is not None:
                         acknowledgements.sort(key=lambda item: item.sequence_number)
                     return records, acknowledgements
@@ -185,6 +312,7 @@ def _persist_readings(
 
             for payload, source_device_id, sequences_by_id in reading_batches:
                 measured_at = payload.measured_at.astimezone(timezone.utc).isoformat()
+                received_at = datetime.now(timezone.utc).isoformat()
                 for measurement in payload.measurements:
                     reading_id = measurement.reading_id or uuid4()
                     sequence_number = (
@@ -213,6 +341,8 @@ def _persist_readings(
                             and existing["source_device_id"]
                             == (str(source_device_id) if source_device_id else None)
                             and existing["sequence_number"] == sequence_number
+                            and existing["declared_origin"]
+                            == payload.declared_origin.value
                         )
                         if not is_same_reading:
                             raise HTTPException(
@@ -221,14 +351,26 @@ def _persist_readings(
                             )
                         row = existing
                         acknowledgement_status = "already_received"
+                        connection.execute(
+                            """
+                            INSERT INTO ingestion_events (
+                                astronaut_id, declared_origin, outcome, occurred_at
+                            ) VALUES (?, ?, 'duplicate', ?)
+                            """,
+                            (
+                                payload.astronaut_id,
+                                payload.declared_origin.value,
+                                received_at,
+                            ),
+                        )
                     else:
                         cursor = connection.execute(
                             """
                             INSERT INTO health_readings (
                                 astronaut_id, metric, value, unit, measured_at,
                                 glucose_context, reading_id, source_device_id,
-                                sequence_number
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                sequence_number, received_at, declared_origin
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 payload.astronaut_id,
@@ -240,6 +382,8 @@ def _persist_readings(
                                 str(reading_id),
                                 str(source_device_id) if source_device_id else None,
                                 sequence_number,
+                                received_at,
+                                payload.declared_origin.value,
                             ),
                         )
                         row = connection.execute(
@@ -311,7 +455,11 @@ def create_readings(
     payload: ReadingBatchInput,
     connection: Connection,
     principal: CurrentPrincipal,
+    request: Request,
 ) -> list[HealthReading]:
+    request.state.ingestion_astronaut_id = payload.astronaut_id
+    request.state.ingestion_origin = payload.declared_origin.value
+    request.state.ingestion_record_count = len(payload.measurements)
     if principal.actor_type != "user":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -332,7 +480,19 @@ def sync_readings(
     payload: OfflineSyncBatchInput,
     connection: Connection,
     principal: CurrentPrincipal,
+    request: Request,
 ) -> SyncAcknowledgement:
+    request.state.ingestion_astronaut_id = (
+        payload.readings[0].astronaut_id if payload.readings else None
+    )
+    request.state.ingestion_origin = (
+        payload.readings[0].declared_origin.value
+        if payload.readings
+        else "unknown"
+    )
+    request.state.ingestion_record_count = sum(
+        len(reading.measurements) for reading in payload.readings
+    )
     if principal.actor_type != "device":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -671,4 +831,142 @@ def get_reading_coverage(
             for metric in Metric
         ],
         scope="observed_counts_only",
+    )
+
+
+@app.get(
+    "/api/v1/readings/operations-summary",
+    response_model=ReadingOperationsSummary,
+    tags=["readings"],
+)
+def get_reading_operations_summary(
+    connection: Connection,
+    principal: CurrentPrincipal,
+    astronaut_id: Annotated[str, Query(min_length=1, max_length=100)],
+    start: datetime,
+    end: datetime,
+) -> ReadingOperationsSummary:
+    if principal.actor_type != "user":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este endpoint requer uma identidade de utilizador.",
+        )
+    require_permission(principal, "readings:read")
+    require_astronaut_scope(principal, astronaut_id)
+
+    if start.tzinfo is None or start.utcoffset() is None:
+        raise HTTPException(status_code=422, detail="start tem de incluir fuso horário.")
+    if end.tzinfo is None or end.utcoffset() is None:
+        raise HTTPException(status_code=422, detail="end tem de incluir fuso horário.")
+    if start > end:
+        raise HTTPException(status_code=422, detail="start não pode ser posterior a end.")
+
+    period_start = start.astimezone(timezone.utc)
+    period_end = end.astimezone(timezone.utc)
+    start_iso = period_start.isoformat()
+    end_iso = period_end.isoformat()
+    try:
+        by_origin_rows = connection.execute(
+            """
+            SELECT declared_origin, COUNT(*) AS record_count,
+                   MAX(received_at) AS latest_received_at
+            FROM health_readings
+            WHERE astronaut_id = ? AND received_at >= ? AND received_at <= ?
+            GROUP BY declared_origin
+            """,
+            (astronaut_id, start_iso, end_iso),
+        ).fetchall()
+        indicator_rows = connection.execute(
+            """
+            SELECT metric, COUNT(*) AS record_count,
+                   MAX(received_at) AS latest_received_at
+            FROM health_readings
+            WHERE astronaut_id = ? AND received_at >= ? AND received_at <= ?
+            GROUP BY metric
+            """,
+            (astronaut_id, start_iso, end_iso),
+        ).fetchall()
+        event_rows = connection.execute(
+            """
+            SELECT outcome, SUM(record_count) AS record_count
+            FROM ingestion_events
+            WHERE astronaut_id = ? AND occurred_at >= ? AND occurred_at <= ?
+            GROUP BY outcome
+            """,
+            (astronaut_id, start_iso, end_iso),
+        ).fetchall()
+        last_received_row = connection.execute(
+            """
+            SELECT MAX(received_at)
+            FROM health_readings
+            WHERE astronaut_id = ? AND received_at >= ? AND received_at <= ?
+            """,
+            (astronaut_id, start_iso, end_iso),
+        ).fetchone()
+        legacy_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM health_readings
+            WHERE astronaut_id = ? AND received_at IS NULL
+            """,
+            (astronaut_id,),
+        ).fetchone()[0]
+    except sqlite3.Error as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Não foi possível compor o resumo operacional de ingestão.",
+        ) from error
+
+    by_origin: dict[str, int] = {}
+    try:
+        for row in by_origin_rows:
+            origin = DataOrigin(row["declared_origin"])
+            by_origin[origin.value] = row["record_count"]
+        by_metric = {
+            Metric(row["metric"]): (
+                row["record_count"],
+                datetime.fromisoformat(row["latest_received_at"])
+                if row["latest_received_at"] is not None
+                else None,
+            )
+            for row in indicator_rows
+        }
+    except (TypeError, ValueError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Os dados persistidos contêm origem, indicador ou instante inválido.",
+        ) from error
+
+    events = {row["outcome"]: row["record_count"] for row in event_rows}
+    latest_received = last_received_row[0]
+    return ReadingOperationsSummary(
+        astronaut_id=astronaut_id,
+        period_start=period_start,
+        period_end=period_end,
+        last_received_at=(
+            datetime.fromisoformat(latest_received) if latest_received else None
+        ),
+        valid_record_count=sum(by_origin.values()),
+        rejected_record_count=events.get("rejected", 0),
+        duplicate_record_count=events.get("duplicate", 0),
+        conflict_record_count=events.get("conflict", 0),
+        records_without_receipt_time=legacy_count,
+        origins=[
+            OriginCount(
+                declared_origin=origin,
+                record_count=by_origin.get(origin.value, 0),
+                verification="unverified_declaration",
+            )
+            for origin in DataOrigin
+        ],
+        indicators=[
+            OperationsIndicatorCount(
+                metric=metric,
+                unit=METRIC_UNITS[metric],
+                valid_record_count=by_metric[metric][0] if metric in by_metric else 0,
+                latest_received_at=by_metric[metric][1] if metric in by_metric else None,
+            )
+            for metric in Metric
+        ],
+        scope="operational_ingestion_summary",
     )

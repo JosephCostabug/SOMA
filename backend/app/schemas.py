@@ -48,6 +48,12 @@ class GlucoseContext(StrEnum):
     UNKNOWN = "unknown"
 
 
+class DataOrigin(StrEnum):
+    NASA = "nasa"
+    SIMULATED = "simulated"
+    MANUAL = "manual"
+
+
 class MeasurementInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -83,6 +89,7 @@ class ReadingBatchInput(BaseModel):
     measured_at: datetime
     measurements: list[MeasurementInput] = Field(min_length=1)
     glucose_context: GlucoseContext | None = None
+    declared_origin: DataOrigin = DataOrigin.MANUAL
 
     @model_validator(mode="after")
     def validate_reading_batch(self) -> "ReadingBatchInput":
@@ -157,7 +164,10 @@ class HealthReading(BaseModel):
     value: float
     unit: str
     measured_at: datetime
+    received_at: datetime | None = None
     glucose_context: GlucoseContext | None
+    declared_origin: DataOrigin
+    origin_verification: Literal["unverified_declaration"]
     source_device_id: UUID | None = None
     sequence_number: int | None = None
 
@@ -199,6 +209,34 @@ class ReadingCoverage(BaseModel):
     period_end: datetime
     indicators: list[IndicatorCoverage]
     scope: Literal["observed_counts_only"]
+
+
+class OriginCount(BaseModel):
+    declared_origin: DataOrigin
+    record_count: int
+    verification: Literal["unverified_declaration"]
+
+
+class OperationsIndicatorCount(BaseModel):
+    metric: Metric
+    unit: str
+    valid_record_count: int
+    latest_received_at: datetime | None
+
+
+class ReadingOperationsSummary(BaseModel):
+    astronaut_id: str
+    period_start: datetime
+    period_end: datetime
+    last_received_at: datetime | None
+    valid_record_count: int
+    rejected_record_count: int
+    duplicate_record_count: int
+    conflict_record_count: int
+    records_without_receipt_time: int
+    origins: list[OriginCount]
+    indicators: list[OperationsIndicatorCount]
+    scope: Literal["operational_ingestion_summary"]
 
 
 class SyncAcknowledgementItem(BaseModel):
