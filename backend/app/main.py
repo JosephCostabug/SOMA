@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 import sqlite3
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -13,7 +14,17 @@ from app.auth import (
     require_astronaut_scope,
     require_permission,
 )
-from app.database import get_connection, initialize_database
+from app.database import connect_database, get_connection, initialize_database
+from app.identity_bootstrap import (
+    IdentityBootstrapError,
+    MissionIdentityBootstrap,
+    load_identity_bootstrap,
+)
+from app.provisioning import (
+    MissionProvisioningError,
+    install_mission_delegations,
+    load_provisioned_mission_configuration,
+)
 from app.schemas import (
     METRIC_UNITS,
     TECHNICAL_LIMITS,
@@ -29,8 +40,52 @@ from app.schemas import (
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(application: FastAPI):
     initialize_database()
+    application.state.identity_bootstrap = None
+    bootstrap_path = os.environ.get("MISSION_BOOTSTRAP_PATH")
+    if bootstrap_path:
+        try:
+            bootstrap = load_identity_bootstrap(bootstrap_path)
+        except IdentityBootstrapError as error:
+            raise RuntimeError("O bootstrap da identidade da missão foi rejeitado.") from error
+
+        connection = connect_database()
+        try:
+            existing = connection.execute(
+                """
+                SELECT 1 FROM provisioned_mission_delegations
+                WHERE mission_id = ?
+                """,
+                (bootstrap.base_configuration.mission.mission_id,),
+            ).fetchone()
+            if existing is None:
+                install_mission_delegations(
+                    connection,
+                    base_configuration=bootstrap.base_configuration,
+                    signed_delegation_tokens=bootstrap.initial_signed_delegation_tokens,
+                    key_set=bootstrap.ground_keys,
+                    expected_onboard_service_id=bootstrap.onboard_token_verifier.onboard_service_id(
+                        bootstrap.base_configuration
+                    ),
+                    now=datetime.now(timezone.utc),
+                )
+            load_provisioned_mission_configuration(
+                connection,
+                base_configuration=bootstrap.base_configuration,
+                key_set=bootstrap.ground_keys,
+                expected_onboard_service_id=bootstrap.onboard_token_verifier.onboard_service_id(
+                    bootstrap.base_configuration
+                ),
+                now=datetime.now(timezone.utc),
+            )
+        except MissionProvisioningError as error:
+            raise RuntimeError(
+                "A delegação provisionada da missão não pôde ser validada."
+            ) from error
+        finally:
+            connection.close()
+        application.state.identity_bootstrap = bootstrap
     yield
 
 

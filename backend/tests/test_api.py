@@ -1,5 +1,10 @@
+import hashlib
+import json
+import os
+import subprocess
 from datetime import datetime, timedelta, timezone
 import sqlite3
+from pathlib import Path
 
 import jwt
 import pytest
@@ -9,23 +14,183 @@ from fastapi.testclient import TestClient
 
 from app.database import initialize_database
 from app.main import app
+from app.identity_bootstrap import (
+    IdentityBootstrapError,
+    MissionIdentityBootstrap,
+    OnboardTokenVerifier,
+    load_identity_bootstrap,
+)
+from app.key_management import (
+    KeyPurpose,
+    KeyState,
+    VerificationKey,
+    VerificationKeySet,
+)
+from app.mission_identity import (
+    ActorType,
+    DelegationState,
+    GroundIdentityAuthority,
+    IdentityState,
+    Mission,
+    MissionDelegation,
+    MissionIdentity,
+    MissionIdentityConfiguration,
+    MissionState,
+)
 
 
-_ISSUER = "mission-identity"
+_ISSUER = "onboard-service-001"
 _AUDIENCE = "health-monitoring-api"
+_MISSION_ID = "mission-test-001"
+_GROUND_ISSUER = "ground-test-authority"
+_GROUND_KEY_ID = "ground-test-key"
+_ONBOARD_KEY_ID = "onboard-key-01"
 _DEVICE_ID = "99d52a98-95e3-48ae-a0c2-24d888d1183f"
 _PRIVATE_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 _PUBLIC_KEY = _PRIVATE_KEY.public_key().public_bytes(
     encoding=serialization.Encoding.PEM,
     format=serialization.PublicFormat.SubjectPublicKeyInfo,
 ).decode()
+_GROUND_PRIVATE_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+_GROUND_PUBLIC_KEY = _GROUND_PRIVATE_KEY.public_key().public_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+).decode()
+_ONBOARD_FINGERPRINT = hashlib.sha256(
+    _PRIVATE_KEY.public_key().public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+).hexdigest()
+
+
+def _create_bootstrap_file(path):
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    mission_start = now - timedelta(days=30)
+    mission_end = now + timedelta(days=365)
+    identities = (
+        MissionIdentity(
+            identity_id=_ISSUER,
+            mission_id=_MISSION_ID,
+            actor_type=ActorType.SERVICE,
+            state=IdentityState.ACTIVE,
+            permissions=frozenset({"readings:read", "readings:write", "sync:write"}),
+            astronaut_ids=frozenset({"astronaut-01", "astronaut-02"}),
+            valid_from=mission_start,
+            expires_at=mission_end,
+            key_id=_ONBOARD_KEY_ID,
+            public_key_thumbprint=f"sha256:{_ONBOARD_FINGERPRINT}",
+        ),
+        MissionIdentity(
+            identity_id="user-01",
+            mission_id=_MISSION_ID,
+            actor_type=ActorType.USER,
+            state=IdentityState.ACTIVE,
+            permissions=frozenset({"readings:read", "readings:write"}),
+            astronaut_ids=frozenset({"astronaut-01", "astronaut-02"}),
+            valid_from=mission_start,
+            expires_at=mission_end,
+        ),
+        *(
+            MissionIdentity(
+                identity_id=device_id,
+                mission_id=_MISSION_ID,
+                actor_type=ActorType.DEVICE,
+                state=IdentityState.ACTIVE,
+                permissions=frozenset({"sync:write"}),
+                astronaut_ids=frozenset({"astronaut-01", "astronaut-02"}),
+                valid_from=mission_start,
+                expires_at=mission_end,
+                key_id=f"{device_id}-key",
+                public_key_thumbprint=f"sha256:{device_id}-thumbprint",
+            )
+            for device_id in (_DEVICE_ID, "another-device")
+        ),
+    )
+    base_configuration = MissionIdentityConfiguration(
+        mission=Mission(
+            mission_id=_MISSION_ID,
+            state=MissionState.ACTIVE,
+            valid_from=mission_start,
+            expires_at=mission_end,
+        ),
+        ground_authority=GroundIdentityAuthority(
+            issuer=_GROUND_ISSUER,
+            trusted_key_ids=frozenset({_GROUND_KEY_ID}),
+        ),
+        identities=identities,
+        delegations=(),
+    )
+    ground_key = VerificationKey(
+        key_id=_GROUND_KEY_ID,
+        issuer=_GROUND_ISSUER,
+        purpose=KeyPurpose.GROUND_DELEGATION,
+        state=KeyState.ACTIVE,
+        public_key_pem=_GROUND_PUBLIC_KEY,
+        valid_from=mission_start,
+        signing_not_after=mission_end,
+        verify_not_after=mission_end,
+    )
+    key_set = VerificationKeySet(
+        issuer=_GROUND_ISSUER,
+        trusted_key_ids=frozenset({_GROUND_KEY_ID}),
+        keys=(ground_key,),
+    )
+    delegation = MissionDelegation(
+        delegation_id="c54d86ca-59f9-41b6-9dbb-f18b3976fc31",
+        mission_id=_MISSION_ID,
+        ground_issuer=_GROUND_ISSUER,
+        ground_key_id=_GROUND_KEY_ID,
+        onboard_service_id=_ISSUER,
+        onboard_key_id=_ONBOARD_KEY_ID,
+        allowed_actor_types=frozenset({ActorType.USER, ActorType.DEVICE}),
+        permissions=frozenset({"readings:read", "readings:write", "sync:write"}),
+        astronaut_ids=frozenset({"astronaut-01", "astronaut-02"}),
+        policy_id="test-policy",
+        state=DelegationState.ACTIVE,
+        issued_at=now - timedelta(minutes=1),
+        valid_from=now - timedelta(minutes=1),
+        expires_at=now + timedelta(days=30),
+        max_token_lifetime_seconds=3600,
+    )
+    delegation_token = jwt.encode(
+        {
+            "iss": _GROUND_ISSUER,
+            "aud": _ISSUER,
+            "iat": int(delegation.issued_at.timestamp()),
+            "nbf": int(delegation.valid_from.timestamp()),
+            "exp": int(delegation.expires_at.timestamp()),
+            "jti": str(delegation.delegation_id),
+            "delegation": delegation.model_dump(mode="json"),
+        },
+        _GROUND_PRIVATE_KEY,
+        algorithm="RS256",
+        headers={"kid": _GROUND_KEY_ID, "typ": "mission-delegation+jwt"},
+    )
+    bootstrap = MissionIdentityBootstrap(
+        base_configuration=base_configuration,
+        ground_keys=key_set,
+        onboard_token_verifier=OnboardTokenVerifier(
+            key_id=_ONBOARD_KEY_ID,
+            public_key_pem=_PUBLIC_KEY,
+            audience=_AUDIENCE,
+        ),
+        initial_signed_delegation_tokens=(delegation_token,),
+    )
+    path.write_text(
+        json.dumps(bootstrap.model_dump(mode="json")),
+        encoding="utf-8",
+    )
+    if path.stat().st_mode & 0o777 != 0o600 and hasattr(path, "chmod"):
+        path.chmod(0o600)
 
 
 @pytest.fixture(autouse=True)
-def configure_authentication(monkeypatch):
-    monkeypatch.setenv("AUTH_PUBLIC_KEY", _PUBLIC_KEY)
-    monkeypatch.setenv("AUTH_ISSUER", _ISSUER)
-    monkeypatch.setenv("AUTH_AUDIENCE", _AUDIENCE)
+def configure_authentication(monkeypatch, tmp_path):
+    bootstrap_path = tmp_path / "mission-bootstrap.json"
+    _create_bootstrap_file(bootstrap_path)
+    monkeypatch.setenv("MISSION_BOOTSTRAP_PATH", str(bootstrap_path.resolve()))
+    monkeypatch.setenv("HEALTH_DB_PATH", str((tmp_path / "health.sqlite3").resolve()))
 
 
 def _authorization_headers(
@@ -35,6 +200,7 @@ def _authorization_headers(
     astronaut_ids=None,
     permissions=None,
     audience=_AUDIENCE,
+    mission_id=_MISSION_ID,
     expires_in=timedelta(minutes=5),
 ):
     now = datetime.now(timezone.utc)
@@ -44,7 +210,9 @@ def _authorization_headers(
             "iss": _ISSUER,
             "aud": audience,
             "iat": now,
+            "nbf": now,
             "exp": now + expires_in,
+            "mission_id": mission_id,
             "actor_type": actor_type,
             "astronaut_ids": astronaut_ids or ["astronaut-01"],
             "permissions": permissions
@@ -56,6 +224,7 @@ def _authorization_headers(
         },
         _PRIVATE_KEY,
         algorithm="RS256",
+        headers={"kid": _ONBOARD_KEY_ID, "typ": "JWT"},
     )
     return {"Authorization": f"Bearer {token}"}
 
@@ -535,6 +704,65 @@ def test_reading_endpoints_reject_invalid_actor_claim():
     assert response.status_code == 401
 
 
+def test_reading_endpoints_reject_token_for_another_mission():
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/readings",
+            params={"astronaut_id": "astronaut-01"},
+            headers=_authorization_headers(mission_id="another-mission"),
+        )
+
+    assert response.status_code == 401
+
+
+def test_reading_endpoints_reject_unprovisioned_identity():
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/readings",
+            params={"astronaut_id": "astronaut-01"},
+            headers=_authorization_headers(subject="unprovisioned-user"),
+        )
+
+    assert response.status_code == 401
+
+
+def test_reading_endpoints_reject_token_lifetime_above_delegation():
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/readings",
+            params={"astronaut_id": "astronaut-01"},
+            headers=_authorization_headers(expires_in=timedelta(hours=2)),
+        )
+
+    assert response.status_code == 401
+
+
+def test_authorization_revalidates_persisted_delegation_each_request():
+    with TestClient(app) as client:
+        authorized = client.get(
+            "/api/v1/readings",
+            params={"astronaut_id": "astronaut-01"},
+            headers=_authorization_headers(),
+        )
+        with sqlite3.connect(os.environ["HEALTH_DB_PATH"]) as connection:
+            connection.execute(
+                """
+                UPDATE provisioned_mission_delegations
+                SET signed_tokens_json = ?
+                WHERE mission_id = ?
+                """,
+                (json.dumps(["invalid-token"]), _MISSION_ID),
+            )
+        rejected = client.get(
+            "/api/v1/readings",
+            params={"astronaut_id": "astronaut-01"},
+            headers=_authorization_headers(),
+        )
+
+    assert authorized.status_code == 200
+    assert rejected.status_code == 503
+
+
 def test_users_cannot_access_astronauts_outside_their_scope():
     with TestClient(app) as client:
         response = client.get(
@@ -698,8 +926,10 @@ def test_device_cannot_query_another_devices_sync_batch(tmp_path, monkeypatch):
     assert response.status_code == 403
 
 
-def test_authentication_fails_closed_when_not_configured(monkeypatch):
-    monkeypatch.delenv("AUTH_PUBLIC_KEY")
+def test_authentication_fails_closed_when_mission_bootstrap_is_not_configured(
+    monkeypatch,
+):
+    monkeypatch.delenv("MISSION_BOOTSTRAP_PATH")
     with TestClient(app) as client:
         response = client.get(
             "/api/v1/readings",
@@ -710,16 +940,75 @@ def test_authentication_fails_closed_when_not_configured(monkeypatch):
     assert response.status_code == 503
 
 
-def test_authentication_fails_closed_with_invalid_public_key(monkeypatch):
-    monkeypatch.setenv("AUTH_PUBLIC_KEY", "not-a-public-key")
+def test_application_fails_to_start_with_invalid_bootstrap(monkeypatch, tmp_path):
+    invalid_bootstrap = tmp_path / "invalid-bootstrap.json"
+    invalid_bootstrap.write_text("{", encoding="utf-8")
+    invalid_bootstrap.chmod(0o600)
+    monkeypatch.setenv("MISSION_BOOTSTRAP_PATH", str(invalid_bootstrap.resolve()))
+
+    with pytest.raises(RuntimeError, match="bootstrap da identidade"):
+        with TestClient(app):
+            pass
+
+
+def test_bootstrap_rejects_onboard_key_mismatch(monkeypatch, tmp_path):
+    invalid_bootstrap = tmp_path / "mismatched-key-bootstrap.json"
+    data = json.loads(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]).read_text(encoding="utf-8")
+    )
+    data["onboard_token_verifier"]["public_key_pem"] = "not-a-public-key"
+    invalid_bootstrap.write_text(json.dumps(data), encoding="utf-8")
+    invalid_bootstrap.chmod(0o600)
+    monkeypatch.setenv("MISSION_BOOTSTRAP_PATH", str(invalid_bootstrap.resolve()))
+
+    with pytest.raises(RuntimeError, match="bootstrap da identidade"):
+        with TestClient(app):
+            pass
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file mode validation")
+def test_bootstrap_rejects_group_or_world_access():
+    bootstrap_path = Path(os.environ["MISSION_BOOTSTRAP_PATH"])
+    bootstrap_path.chmod(0o644)
+    try:
+        with pytest.raises(IdentityBootstrapError, match="chmod 600"):
+            load_identity_bootstrap(bootstrap_path)
+    finally:
+        bootstrap_path.chmod(0o600)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows ACL validation")
+def test_bootstrap_rejects_access_granted_to_builtin_users():
+    bootstrap_path = os.environ["MISSION_BOOTSTRAP_PATH"]
+    subprocess.run(
+        ["icacls", bootstrap_path, "/grant", "*S-1-5-32-545:(R)"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    try:
+        with pytest.raises(IdentityBootstrapError, match="conta não confiável"):
+            load_identity_bootstrap(bootstrap_path)
+    finally:
+        subprocess.run(
+            ["icacls", bootstrap_path, "/remove:g", "*S-1-5-32-545"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+
+def test_authentication_rejects_token_permissions_above_identity():
     with TestClient(app) as client:
         response = client.get(
             "/api/v1/readings",
             params={"astronaut_id": "astronaut-01"},
-            headers=_authorization_headers(),
+            headers=_authorization_headers(
+                permissions=["readings:read", "admin:all"]
+            ),
         )
 
-    assert response.status_code == 503
+    assert response.status_code == 401
 
 
 def test_openapi_declares_bearer_authentication_for_protected_routes():

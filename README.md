@@ -62,28 +62,56 @@ normalidade, diagnósticos ou critérios de aptidão médica.
 
 ## Autenticação e autorização
 
-Os endpoints de leitura, escrita e sincronização exigem um JWT Bearer assinado
-com RS256 por um emissor local confiável. Configura o serviço com
-`AUTH_PUBLIC_KEY`, `AUTH_ISSUER` e `AUTH_AUDIENCE`; sem estas configurações, os
-endpoints protegidos falham de forma fechada. `AUTH_PUBLIC_KEY` deve conter a
-chave pública PEM do emissor (em ambientes que não aceitam quebras de linha,
-usa `\n` escapado).
+Os endpoints protegidos exigem um JWT RS256 emitido pelo serviço de identidade
+local da missão. A configuração de confiança chega por um caminho absoluto
+definido em `MISSION_BOOTSTRAP_PATH`, que aponta para um ficheiro JSON com:
 
-O token tem de incluir `sub`, `iss`, `aud`, `iat`, `exp`, `actor_type`,
-`astronaut_ids` e `permissions`. `actor_type` é `user` ou `device`. Utilizadores
-precisam de `readings:read` e/ou `readings:write`; dispositivos precisam de
-`sync:write`, e o `sub` do token de dispositivo tem de corresponder ao
-`source_device_id` do lote. A autorização também confere que cada astronauta
-está em `astronaut_ids`.
+- `base_configuration`: missão, autoridade terrestre e identidades provisionadas,
+  sem delegações não verificadas;
+- `ground_keys`: emissor, `kid`s confiáveis e chaves públicas RSA terrestres;
+- `onboard_token_verifier`: `key_id`, chave pública RSA do serviço a bordo e
+  `audience`;
+- `initial_signed_delegation_tokens`: delegações JWT RS256 assinadas pela Terra,
+  usadas apenas para o provisionamento inicial.
 
-O emissor local da missão é responsável por provisionar identidades e emitir
-tokens assinados que funcionem durante a desconexão da Terra. Esta API valida
-tokens offline, mas **não** implementa registo de contas, login, emissão ou
-renovação de tokens, revogação local ou rotação coordenada de chaves. A
-identidade de teste usada pela suite não é uma chave de desenvolvimento nem
-deve ser reutilizada. Não usar dados reais nem expor a rede antes de integrar
-um emissor confiável, proteger a distribuição da chave pública e validar a
-política de validade/revogação dos tokens e o transporte seguro.
+A chave pública onboard tem de corresponder ao `key_id` e a impressão digital
+`sha256:<SHA-256 do SubjectPublicKeyInfo DER>` da identidade do serviço a bordo.
+O ficheiro não pode conter chaves privadas. Em POSIX, deve pertencer ao
+utilizador do serviço e ter modo `0600`; em Windows, o proprietário deve ser a
+conta do serviço e as ACEs so podem conceder acesso a essa conta, `SYSTEM`,
+Administrators ou `OWNER RIGHTS`. O carregador rejeita links/reparse points,
+ficheiros maiores que 1 MiB e ACLs/permissões excessivas.
+
+Exemplo de inicialização em PowerShell:
+
+```powershell
+$env:MISSION_BOOTSTRAP_PATH = "C:\secure\mission-bootstrap.json"
+$env:HEALTH_DB_PATH = "C:\secure\health_monitoring.sqlite3"
+$env:PYTHONPATH = "backend"
+uvicorn app.main:app --app-dir backend
+```
+
+O emissor local assina tokens com `kid` igual a chave onboard provisionada. Os
+tokens devem conter `sub`, `iss` (ID do serviço onboard), `aud`, `iat`, `nbf`,
+`exp`, `mission_id`, `actor_type`, `astronaut_ids` e `permissions`. A cada
+pedido protegido, a API valida novamente as delegações persistidas e exige que
+a missão, o serviço, a identidade individual, o tipo de ator, o período do
+token, escopos e permissões estejam ativos e cobertos pela delegacao. A
+identidade de dispositivo também tem de corresponder a `source_device_id`.
+Ficheiro de bootstrap ausente deixa rotas protegidas fechadas (503); se estiver
+configurado mas inválido ou a delegacao persistida for inválida, a API não
+inicia.
+
+O primeiro conjunto de delegações e instalado na base SQLite apenas se ainda
+não existir provisionamento para a missão. Um bootstrap atualizado não
+substitui automaticamente delegações persistidas; ainda falta um canal/CLI
+administrativo autenticado para atualizar e revogar a configuração em operação.
+Esta API não implementa registo/login de utilizadores, emissão/renovacao de
+tokens, armazenamento da chave privada onboard, revogação individual de tokens
+ou protocolo de rotação de chaves. A base SQLite não protege contra rollback ou
+adulteração por um administrador local. Nao usar dados reais nem expor a rede
+antes de validar o provisionamento no ambiente de missão, a política temporal,
+transporte TLS/mTLS e os controlos operacionais.
 
 ## Sincronização offline (interface do backend)
 
@@ -187,28 +215,28 @@ validade, serviço a bordo não provisionado, delegações pré-carregadas sem p
 criptográfica e delegações que excedam a missão, o serviço, os escopos ou as
 permissões. O resultado é uma configuração imutável validada.
 
-Esta função ainda não está ligada ao arranque da API nem ao `AUTH_PUBLIC_KEY`;
-também não emite credenciais. A distribuição protegida das chaves públicas,
-bootstrap da configuração-base, revogação sincronizada e políticas temporais
-continuam por definir e validar. Isto não constitui prontidão para uso com
-dados reais ou em missão.
+O verificador e o carregador de configuração estão ligados ao arranque e à
+autorização da API por meio do bootstrap descrito acima. Ainda não emite
+credenciais. A rotação de chaves, revogação sincronizada e políticas temporais
+operacionais continuam por definir e validar. Isto não constitui prontidão para
+uso com dados reais ou em missão.
 
 ### Persistência do provisionamento
 
 `backend/app/provisioning.py` instala e recarrega delegações assinadas na tabela
 `provisioned_mission_delegations`. O instalador verifica o conjunto completo
-antes de substituir o registo existente, numa transação SQLite; no arranque ou
-recarregamento, os JWTs persistidos são novamente verificados com a configuração
-base da missão e o conjunto de chaves confiáveis fornecidos localmente. A base
-de configuração e as chaves públicas de confiança não são aceites do conteúdo
-persistido.
+antes de substituir o registo existente, numa transação SQLite; no arranque e
+em cada pedido protegido, os JWTs persistidos são novamente verificados com a
+configuração-base da missão e o conjunto de chaves confiáveis fornecidos
+localmente. A base de configuração e as chaves públicas de confiança não são
+aceites do conteúdo persistido.
 
 Esta tabela guarda os JWTs assinados, não os torna confidenciais nem protege
 contra adulteração/rollback do ficheiro SQLite. A chave pública raiz e a base
 da missão precisam de ser provisionadas por um canal local protegido; cifragem
-em repouso, controlo de rollback, auditoria, fonte segura de bootstrap e
-integração com o ciclo de vida da API permanecem por implementar. A persistência
-SQLite, por si só, não é uma fronteira de segurança para operação de missão.
+em repouso, controlo de rollback, auditoria e canal administrativo para atualizar
+ou revogar delegações permanecem por implementar. A persistência SQLite, por si
+só, não é uma fronteira de segurança para operação de missão.
 
 ## Arquitetura offline
 

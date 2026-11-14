@@ -8,7 +8,7 @@ def database_path() -> Path:
     return Path(os.environ.get("HEALTH_DB_PATH", "data/health_monitoring.sqlite3"))
 
 
-def get_connection() -> Iterator[sqlite3.Connection]:
+def connect_database() -> sqlite3.Connection:
     path = database_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
@@ -16,6 +16,11 @@ def get_connection() -> Iterator[sqlite3.Connection]:
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA synchronous = FULL")
     connection.execute("PRAGMA busy_timeout = 5000")
+    return connection
+
+
+def get_connection() -> Iterator[sqlite3.Connection]:
+    connection = connect_database()
     try:
         yield connection
     finally:

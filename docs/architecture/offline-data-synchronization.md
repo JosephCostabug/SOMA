@@ -52,39 +52,44 @@ versão da regra e referências às entradas usadas; não substitui as mediçõe
    em cada componente. A qualidade ou incerteza do relógio deve ser indicada;
    a hora de receção não deve substituir a hora da medição.
 
-## Identidade e autorização: primeira decisão de implementação
+## Identidade e autorizacao: estado de implementacao
 
-Para a primeira etapa do backend, o emissor de identidade é separado da API e
-deve estar disponível na rede local da missão. A API valida tokens Bearer JWT
-assinados com RS256 usando uma chave pública configurada localmente, sem
-depender de uma chamada ao emissor durante cada pedido. Assim, a verificação de
-assinatura funciona durante o isolamento da Terra.
+A confianca da API e configurada localmente por `MISSION_BOOTSTRAP_PATH`, um
+caminho absoluto para um ficheiro JSON protegido pelo sistema operativo. O
+ficheiro contem a configuracao-base da missao e identidades, as chaves publicas
+confiaveis da autoridade terrestre, a chave publica de verificacao do servico a
+bordo e delegacoes iniciais assinadas pela Terra. Nao contem chaves privadas.
+Em POSIX exige-se propriedade do utilizador do servico e modo `0600`; em Windows
+a ACL deve restringir permissao ao proprietario/servico, `SYSTEM`, Administrators
+e `OWNER RIGHTS`. Links, reparse points, ficheiros excessivos e ACLs nao
+permitidas sao rejeitados.
 
-O token declara o sujeito (`sub`), emissor (`iss`), público (`aud`), validade
-(`iat`/`exp`), tipo de ator (`user` ou `device`), astronautas autorizados
-(`astronaut_ids`) e permissões. A API exige escopo por astronauta e permissão
-por operação. Para sincronização, o sujeito do token de dispositivo tem de
-corresponder ao identificador do dispositivo no lote. A configuração ausente
-ou inválida falha fechada. IDs no corpo do pedido nunca substituem a
-autenticação.
+No arranque, a API valida o bootstrap, inicializa SQLite e instala as delegacoes
+iniciais apenas se ainda nao existir provisionamento para a missao. Se existir,
+os JWTs guardados sao revalidados com a configuracao-base e as chaves publicas
+locais; uma configuracao persistida invalida impede o arranque. A ausencia de
+bootstrap mantem endpoints protegidos fechados.
 
-Este é apenas o contrato de validação da API; o emissor, provisionamento,
-registo/login, renovação de credenciais, revogação offline, rotação de chaves,
-armazenamento de tokens na PWA e transporte autenticado entre componentes ainda
-precisam de desenho e implementação. As permissões assinadas podem ficar
-desatualizadas até o token expirar; a validade offline e a resposta a
-revogação devem ser definidas e testadas antes de uso operacional. JWT não
-substitui TLS nem a autenticação mútua dos serviços.
+Em cada pedido protegido, a API verifica a assinatura RS256 do token onboard e
+confirma emissor/servico, audiencia, `kid`, missao, datas, identidade ativa,
+tipo de ator, permissoes e escopos. Os direitos do token tem de ser subconjuntos
+da identidade provisionada e estar cobertos por uma delegacao ativa, incluindo
+a validade maxima dos tokens. A identidade do dispositivo continua a ser
+comparada com o `source_device_id` da sincronizacao. A configuracao e as
+delegacoes persistidas sao revalidadas em cada pedido para que alteracoes locais
+persistidas nao fiquem escondidas por cache.
 
-Os modelos iniciais de missão, identidade e delegação estão em
-`backend/app/mission_identity.py`. A configuração relaciona a autoridade
-terrestre e as suas chaves confiáveis, a missão, a identidade/chave do serviço
-a bordo e as delegações. Valida missão comum, unicidade de IDs, escopos e
-permissões máximas, referências de chaves e validade temporal consistente.
-Limites como duração máxima da delegação e duração máxima de tokens são campos
-obrigatórios, sem valores padrão: os tempos operacionais continuam por decidir.
-Estes modelos ainda não persistem identidades, verificam assinaturas de
-delegação nem emitem ou validam tokens.
+Os modelos estao em `backend/app/mission_identity.py`; verificacao de delegacoes
+em `backend/app/key_management.py`; bootstrap em
+`backend/app/identity_bootstrap.py`; persistencia em
+`backend/app/provisioning.py`; e autenticacao da API em `backend/app/auth.py`.
+O primeiro conjunto e carregado a partir do bootstrap, mas atualizacoes nao sao
+aplicadas automaticamente quando o ficheiro muda. Ainda faltam um canal/CLI
+administrativo para atualizar/revogar delegacoes, emissao e renovacao de tokens,
+revogacao individual, rotacao de chaves, protecao contra rollback/adulteracao
+por administrador local e transporte TLS/mTLS. JWT nao substitui TLS nem
+autenticacao mutua entre componentes. Esta implementacao nao esta validada para
+uso operacional ou dados reais.
 
 ## Fluxos de comunicação
 
