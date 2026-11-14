@@ -1,5 +1,6 @@
 import base64
 import json
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -9,6 +10,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from pydantic import ValidationError
 
+from app.database import initialize_database
 from app.key_management import (
     DelegationVerificationError,
     KeyConfigurationError,
@@ -30,6 +32,11 @@ from app.mission_identity import (
     MissionIdentity,
     MissionIdentityConfiguration,
     MissionState,
+)
+from app.provisioning import (
+    MissionProvisioningError,
+    install_mission_delegations,
+    load_provisioned_mission_configuration,
 )
 
 
@@ -173,6 +180,15 @@ def _base_configuration(now=None, *, delegations=()):
         ),
         delegations=delegations,
     )
+
+
+def _provisioning_connection(tmp_path, monkeypatch):
+    database_file = tmp_path / "mission.sqlite3"
+    monkeypatch.setenv("HEALTH_DB_PATH", str(database_file))
+    initialize_database()
+    connection = sqlite3.connect(database_file)
+    connection.row_factory = sqlite3.Row
+    return connection
 
 
 def test_verifies_ground_signed_delegation_against_pinned_key():
@@ -334,6 +350,154 @@ def test_loader_rejects_naive_current_time():
             expected_onboard_service_id=ONBOARD_SERVICE_ID,
             now=datetime(2030, 1, 1),
         )
+
+
+def test_persists_and_revalidates_signed_delegation_on_reload(
+    tmp_path, monkeypatch
+):
+    now = _now()
+    configuration = _base_configuration(now)
+    token = _signed_delegation(_delegation(now))
+    connection = _provisioning_connection(tmp_path, monkeypatch)
+    try:
+        installed = install_mission_delegations(
+            connection,
+            base_configuration=configuration,
+            signed_delegation_tokens=(token,),
+            key_set=_key_set(),
+            expected_onboard_service_id=ONBOARD_SERVICE_ID,
+            now=now,
+        )
+        connection.close()
+        connection = sqlite3.connect(tmp_path / "mission.sqlite3")
+        connection.row_factory = sqlite3.Row
+        reloaded = load_provisioned_mission_configuration(
+            connection,
+            base_configuration=configuration,
+            key_set=_key_set(),
+            expected_onboard_service_id=ONBOARD_SERVICE_ID,
+            now=now,
+        )
+
+        assert installed == reloaded
+        assert reloaded.delegations == (_delegation(now),)
+    finally:
+        connection.close()
+
+
+def test_rejects_invalid_install_without_overwriting_existing_bundle(
+    tmp_path, monkeypatch
+):
+    now = _now()
+    configuration = _base_configuration(now)
+    good_token = _signed_delegation(_delegation(now))
+    invalid_token = _signed_delegation(_delegation(now, permissions={"admin:all"}))
+    connection = _provisioning_connection(tmp_path, monkeypatch)
+    try:
+        install_mission_delegations(
+            connection,
+            base_configuration=configuration,
+            signed_delegation_tokens=(good_token,),
+            key_set=_key_set(),
+            expected_onboard_service_id=ONBOARD_SERVICE_ID,
+            now=now,
+        )
+
+        with pytest.raises(MissionProvisioningError, match="foi rejeitada"):
+            install_mission_delegations(
+                connection,
+                base_configuration=configuration,
+                signed_delegation_tokens=(invalid_token,),
+                key_set=_key_set(),
+                expected_onboard_service_id=ONBOARD_SERVICE_ID,
+                now=now,
+            )
+
+        reloaded = load_provisioned_mission_configuration(
+            connection,
+            base_configuration=configuration,
+            key_set=_key_set(),
+            expected_onboard_service_id=ONBOARD_SERVICE_ID,
+            now=now,
+        )
+        assert reloaded.delegations == (_delegation(now),)
+    finally:
+        connection.close()
+
+
+def test_reload_fails_closed_if_persisted_token_is_tampered(
+    tmp_path, monkeypatch
+):
+    now = _now()
+    configuration = _base_configuration(now)
+    token = _signed_delegation(_delegation(now))
+    connection = _provisioning_connection(tmp_path, monkeypatch)
+    try:
+        install_mission_delegations(
+            connection,
+            base_configuration=configuration,
+            signed_delegation_tokens=(token,),
+            key_set=_key_set(),
+            expected_onboard_service_id=ONBOARD_SERVICE_ID,
+            now=now,
+        )
+        connection.execute(
+            """
+            UPDATE provisioned_mission_delegations
+            SET signed_tokens_json = ?
+            WHERE mission_id = ?
+            """,
+            (json.dumps(["tampered-token"]), MISSION_ID),
+        )
+        connection.commit()
+
+        with pytest.raises(MissionProvisioningError, match="já não é válida"):
+            load_provisioned_mission_configuration(
+                connection,
+                base_configuration=configuration,
+                key_set=_key_set(),
+                expected_onboard_service_id=ONBOARD_SERVICE_ID,
+                now=now,
+            )
+    finally:
+        connection.close()
+
+
+def test_reload_fails_for_missing_or_corrupted_persisted_configuration(
+    tmp_path, monkeypatch
+):
+    now = _now()
+    configuration = _base_configuration(now)
+    connection = _provisioning_connection(tmp_path, monkeypatch)
+    try:
+        with pytest.raises(MissionProvisioningError, match="Não existe configuração"):
+            load_provisioned_mission_configuration(
+                connection,
+                base_configuration=configuration,
+                key_set=_key_set(),
+                expected_onboard_service_id=ONBOARD_SERVICE_ID,
+                now=now,
+            )
+
+        connection.execute(
+            """
+            INSERT INTO provisioned_mission_delegations (
+                mission_id, signed_tokens_json, updated_at
+            ) VALUES (?, ?, ?)
+            """,
+            (MISSION_ID, "{", now.isoformat()),
+        )
+        connection.commit()
+        with pytest.raises(MissionProvisioningError, match="está corrompido"):
+            load_provisioned_mission_configuration(
+                connection,
+                base_configuration=configuration,
+                key_set=_key_set(),
+                expected_onboard_service_id=ONBOARD_SERVICE_ID,
+                now=now,
+            )
+    finally:
+        connection.close()
 
 
 @pytest.mark.parametrize(

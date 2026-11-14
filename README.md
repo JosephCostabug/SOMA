@@ -187,11 +187,28 @@ validade, serviço a bordo não provisionado, delegações pré-carregadas sem p
 criptográfica e delegações que excedam a missão, o serviço, os escopos ou as
 permissões. O resultado é uma configuração imutável validada.
 
-Esta função ainda não está ligada ao arranque da API, ao `AUTH_PUBLIC_KEY` ou a
-uma fonte persistente/segura de configuração; também não emite credenciais. A
-distribuição protegida das chaves públicas, persistência, revogação sincronizada
-e políticas temporais continuam por definir e validar. Isto não constitui
-prontidão para uso com dados reais ou em missão.
+Esta função ainda não está ligada ao arranque da API nem ao `AUTH_PUBLIC_KEY`;
+também não emite credenciais. A distribuição protegida das chaves públicas,
+bootstrap da configuração-base, revogação sincronizada e políticas temporais
+continuam por definir e validar. Isto não constitui prontidão para uso com
+dados reais ou em missão.
+
+### Persistência do provisionamento
+
+`backend/app/provisioning.py` instala e recarrega delegações assinadas na tabela
+`provisioned_mission_delegations`. O instalador verifica o conjunto completo
+antes de substituir o registo existente, numa transação SQLite; no arranque ou
+recarregamento, os JWTs persistidos são novamente verificados com a configuração
+base da missão e o conjunto de chaves confiáveis fornecidos localmente. A base
+de configuração e as chaves públicas de confiança não são aceites do conteúdo
+persistido.
+
+Esta tabela guarda os JWTs assinados, não os torna confidenciais nem protege
+contra adulteração/rollback do ficheiro SQLite. A chave pública raiz e a base
+da missão precisam de ser provisionadas por um canal local protegido; cifragem
+em repouso, controlo de rollback, auditoria, fonte segura de bootstrap e
+integração com o ciclo de vida da API permanecem por implementar. A persistência
+SQLite, por si só, não é uma fronteira de segurança para operação de missão.
 
 ## Arquitetura offline
 

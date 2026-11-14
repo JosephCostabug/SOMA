@@ -296,16 +296,21 @@ def load_signed_mission_identity_configuration(
             "O serviço a bordo esperado não está provisionado e ativo."
         )
 
-    delegations = tuple(
-        verify_ground_delegation(
-            token,
-            key_set=key_set,
-            expected_mission_id=configuration.mission.mission_id,
-            expected_onboard_service_id=expected_onboard_service_id,
-            now=current_time,
+    try:
+        delegations = tuple(
+            verify_ground_delegation(
+                token,
+                key_set=key_set,
+                expected_mission_id=configuration.mission.mission_id,
+                expected_onboard_service_id=expected_onboard_service_id,
+                now=current_time,
+            )
+            for token in signed_delegation_tokens
         )
-        for token in signed_delegation_tokens
-    )
+    except (DelegationVerificationError, KeyConfigurationError) as error:
+        raise MissionIdentityConfigurationError(
+            "Uma delegação assinada foi rejeitada."
+        ) from error
     configuration_data = configuration.model_dump(mode="python")
     configuration_data["delegations"] = delegations
     try:

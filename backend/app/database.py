@@ -107,6 +107,15 @@ def initialize_database() -> None:
         )
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS provisioned_mission_delegations (
+                mission_id TEXT PRIMARY KEY,
+                signed_tokens_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_sync_batches_device_received
             ON sync_batches (source_device_id, received_at)
             """
