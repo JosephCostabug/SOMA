@@ -176,3 +176,11 @@ class SyncAcknowledgementItem(BaseModel):
 class SyncAcknowledgement(BaseModel):
     batch_id: UUID
     items: list[SyncAcknowledgementItem]
+
+
+class SyncBatchStatus(BaseModel):
+    batch_id: UUID
+    source_device_id: UUID
+    status: Literal["persisted"]
+    received_at: datetime
+    items: list[SyncAcknowledgementItem]

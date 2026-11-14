@@ -29,6 +29,8 @@ Define `HEALTH_DB_PATH` para escolher outro caminho.
 - `POST /api/v1/sync/readings` — recebe um lote offline limitado e idempotente,
   devolvendo confirmação por medição (token de dispositivo com `sync:write`,
   identidade igual a `source_device_id` e escopo para os astronautas do lote).
+- `GET /api/v1/sync/batches/{batch_id}` — consulta o recibo persistido de um lote
+  (apenas o mesmo dispositivo autenticado).
 
 ### Exemplo de registo
 
@@ -89,13 +91,20 @@ O cliente offline deve guardar cada medição numa fila local durável antes de 
 considerar gravada. Cada medição enviada precisa de um `reading_id` UUID criado
 no dispositivo; cada medição tem um `sequence_number` crescente, único por
 dispositivo. Cada lote inclui um `batch_id` e `source_device_id` UUID. O endpoint
-aceita até 100 medições por lote. Pode reenviar o mesmo lote após timeout: a
-mesma medição é confirmada como `already_received`, sem criar duplicados;
-reutilizar um ID com conteúdo diferente ou uma sequência já usada com outra
-medição resulta em `409 Conflict`. O lote é gravado numa transação: se houver
-conflito, nada desse lote é confirmado. O cliente só deve retirar da fila as
-medições explicitamente confirmadas depois da resposta bem-sucedida; deve manter
-o lote para repetição após timeout, desconexão ou erro.
+aceita até 100 medições por lote. Pode reenviar o mesmo lote após timeout: o
+recibo original é devolvido sem criar duplicados. Um novo lote que contenha
+medições já persistidas recebe `already_received`; reutilizar `batch_id` ou
+`reading_id` com conteúdo diferente, ou uma sequência já usada com outra
+medição, resulta em `409 Conflict`. O lote, o recibo e as medições são gravados
+na mesma transação; se houver conflito, nenhum deles é confirmado. O cliente só
+deve retirar da fila as medições explicitamente confirmadas depois da resposta
+bem-sucedida; deve manter o lote para repetição após timeout, desconexão ou erro.
+
+Após timeout ou perda da resposta, o dispositivo pode consultar
+`GET /api/v1/sync/batches/{batch_id}` com o mesmo token de dispositivo. O estado
+`persisted` e a lista de medições significam que esse lote foi confirmado no
+serviço local; um lote ainda não persistido responde `404`. As medições de um
+lote rejeitado por conflito não têm recibo parcial.
 
 Exemplo do corpo para sincronização:
 
@@ -129,10 +138,13 @@ emissão de credenciais, cifragem em repouso nem resolução de sincronização 
 múltiplas fontes. Os UUIDs de dispositivo e identificadores enviados pelo cliente
 são metadados; a identidade do dispositivo é verificada pelo token assinado.
 Autenticação e autorização atuais são apenas validação stateless de claims. A
-migração SQLite adiciona as colunas de sincronização sem apagar os registos
-existentes. O modo offline ainda não foi validado para operação espacial:
-requer testes de perda de ligação/reinício e revisão de segurança e missão antes
-de dados reais.
+migração SQLite adiciona as colunas de sincronização e tabelas de recibos sem
+apagar os registos existentes. As gravações locais usam transações SQLite,
+chaves estrangeiras e `synchronous=FULL`; a durabilidade ainda depende do
+armazenamento e da plataforma reais e precisa de validação de falhas. Este
+backend não retransmite para o sistema terrestre. O modo offline ainda não foi
+validado para operação espacial: requer testes de perda de ligação/reinício e
+revisão de segurança e missão antes de dados reais.
 
 ## Arquitetura offline
 

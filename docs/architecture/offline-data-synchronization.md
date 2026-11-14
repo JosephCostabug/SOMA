@@ -135,6 +135,19 @@ Uma confirmação de um salto não altera retroativamente os estados de outros
 saltos. O estado terrestre só passa a confirmado depois da confirmação do
 sistema terrestre.
 
+### Recibos de lotes no backend atual
+
+O backend local mantém um recibo durável por `batch_id`, com o dispositivo de
+origem, hash do payload validado, instante de receção, estado `persisted` e
+confirmações por medição. O recibo e as medições são inseridos na mesma
+transação SQLite. Repetir o mesmo lote devolve o recibo original; reutilizar o
+`batch_id` com conteúdo diferente dá conflito. O endpoint
+`GET /api/v1/sync/batches/{batch_id}` permite ao mesmo dispositivo recuperar o
+resultado depois de perder a resposta. Lotes rejeitados não deixam recibos nem
+medições parciais. Esta implementação cobre apenas a receção no serviço local;
+não implementa estado de retransmissão do serviço a bordo para o sistema
+terrestre.
+
 ## Política de confirmação
 
 - O emissor persiste a medição e os metadados necessários antes de iniciar o
@@ -153,6 +166,10 @@ sistema terrestre.
   armazenamento reais. O contrato de confirmação deve ser verificado perante
   falha de processo, reinício e falha do meio; uma resposta HTTP isolada não é
   evidência suficiente dessa garantia.
+- O backend local configura SQLite com chaves estrangeiras e
+  `synchronous=FULL` em cada ligação usada. Isto é uma escolha de configuração,
+  não prova de sobrevivência a falha física ou garantia de flush do hardware;
+  validar no sistema de ficheiros, armazenamento e plataforma finais.
 
 ## Falhas e conflitos
 

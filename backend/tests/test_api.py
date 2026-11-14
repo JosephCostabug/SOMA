@@ -197,16 +197,16 @@ def test_offline_sync_is_idempotent_and_acknowledges_after_storage(tmp_path, mon
                 "measured_at": "2026-11-14T16:00:00Z",
                 "measurements": [
                     {
-                        "reading_id": "f59b83f0-56a8-47f3-874d-ed940f65d346",
-                        "metric": "heart_rate",
-                        "value": 72,
-                        "sequence_number": 12,
-                    },
-                    {
                         "reading_id": "12a2452f-4de5-43eb-b42a-a88723b9df88",
                         "metric": "mood",
                         "value": 4,
                         "sequence_number": 13,
+                    },
+                    {
+                        "reading_id": "f59b83f0-56a8-47f3-874d-ed940f65d346",
+                        "metric": "heart_rate",
+                        "value": 72,
+                        "sequence_number": 12,
                     },
                 ],
             }
@@ -220,6 +220,19 @@ def test_offline_sync_is_idempotent_and_acknowledges_after_storage(tmp_path, mon
         retry = client.post(
             "/api/v1/sync/readings", json=batch, headers=_device_headers()
         )
+        new_batch_id = {
+            **batch,
+            "batch_id": "825ee45b-90cd-4bd0-9e45-e457445b5c78",
+        }
+        duplicate_readings = client.post(
+            "/api/v1/sync/readings",
+            json=new_batch_id,
+            headers=_device_headers(),
+        )
+        status_response = client.get(
+            f"/api/v1/sync/batches/{batch['batch_id']}",
+            headers=_device_headers(),
+        )
         history = client.get(
             "/api/v1/readings",
             params={"astronaut_id": "astronaut-01"},
@@ -229,7 +242,15 @@ def test_offline_sync_is_idempotent_and_acknowledges_after_storage(tmp_path, mon
     assert first.status_code == 200
     assert {item["status"] for item in first.json()["items"]} == {"accepted"}
     assert retry.status_code == 200
-    assert {item["status"] for item in retry.json()["items"]} == {"already_received"}
+    assert retry.json() == first.json()
+    assert [item["sequence_number"] for item in first.json()["items"]] == [12, 13]
+    assert duplicate_readings.status_code == 200
+    assert {item["status"] for item in duplicate_readings.json()["items"]} == {
+        "already_received"
+    }
+    assert status_response.status_code == 200
+    assert status_response.json()["status"] == "persisted"
+    assert status_response.json()["items"] == first.json()["items"]
     assert history.json()["total"] == 2
     assert {item["sequence_number"] for item in history.json()["items"]} == {12, 13}
 
@@ -293,6 +314,10 @@ def test_offline_sync_conflict_rolls_back_entire_batch(tmp_path, monkeypatch):
             json=conflicting_batch,
             headers=_device_headers(),
         )
+        failed_batch_status = client.get(
+            f"/api/v1/sync/batches/{conflicting_batch['batch_id']}",
+            headers=_device_headers(),
+        )
         history = client.get(
             "/api/v1/readings",
             params={"astronaut_id": "astronaut-01"},
@@ -300,6 +325,7 @@ def test_offline_sync_conflict_rolls_back_entire_batch(tmp_path, monkeypatch):
         )
 
     assert conflict.status_code == 409
+    assert failed_batch_status.status_code == 404
     assert history.json()["total"] == 1
 
 
@@ -336,9 +362,16 @@ def test_database_initialization_migrates_existing_readings(tmp_path, monkeypatc
             "SELECT astronaut_id, metric, value, reading_id, source_device_id, sequence_number "
             "FROM health_readings"
         ).fetchone()
+        batch_tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
 
     assert {"reading_id", "source_device_id", "sequence_number"} <= columns
     assert row == ("astronaut-01", "heart_rate", 72.0, None, None, None)
+    assert {"sync_batches", "sync_batch_items"} <= batch_tables
 
 
 def test_offline_sync_requires_stable_ids_and_unique_sequences(tmp_path, monkeypatch):
@@ -573,6 +606,98 @@ def test_sync_requires_matching_authenticated_device(tmp_path, monkeypatch):
     assert accepted.status_code == 200
 
 
+def test_sync_batch_id_cannot_be_reused_with_different_content(tmp_path, monkeypatch):
+    monkeypatch.setenv("HEALTH_DB_PATH", str(tmp_path / "health.sqlite3"))
+    batch = {
+        "batch_id": "c54d86ca-59f9-41b6-9dbb-f18b3976fc31",
+        "source_device_id": _DEVICE_ID,
+        "readings": [
+            {
+                "astronaut_id": "astronaut-01",
+                "measured_at": "2026-11-14T16:00:00Z",
+                "measurements": [
+                    {
+                        "reading_id": "f59b83f0-56a8-47f3-874d-ed940f65d346",
+                        "sequence_number": 12,
+                        "metric": "heart_rate",
+                        "value": 72,
+                    }
+                ],
+            }
+        ],
+    }
+    changed_batch = {
+        **batch,
+        "readings": [
+            {
+                **batch["readings"][0],
+                "measurements": [
+                    {
+                        **batch["readings"][0]["measurements"][0],
+                        "value": 73,
+                    }
+                ],
+            }
+        ],
+    }
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/api/v1/sync/readings",
+            json=batch,
+            headers=_device_headers(),
+        )
+        conflict = client.post(
+            "/api/v1/sync/readings",
+            json=changed_batch,
+            headers=_device_headers(),
+        )
+        history = client.get(
+            "/api/v1/readings",
+            params={"astronaut_id": "astronaut-01"},
+            headers=_authorization_headers(),
+        )
+
+    assert first.status_code == 200
+    assert conflict.status_code == 409
+    assert history.json()["total"] == 1
+
+
+def test_device_cannot_query_another_devices_sync_batch(tmp_path, monkeypatch):
+    monkeypatch.setenv("HEALTH_DB_PATH", str(tmp_path / "health.sqlite3"))
+    batch = {
+        "batch_id": "c54d86ca-59f9-41b6-9dbb-f18b3976fc31",
+        "source_device_id": _DEVICE_ID,
+        "readings": [
+            {
+                "astronaut_id": "astronaut-01",
+                "measured_at": "2026-11-14T16:00:00Z",
+                "measurements": [
+                    {
+                        "reading_id": "f59b83f0-56a8-47f3-874d-ed940f65d346",
+                        "sequence_number": 12,
+                        "metric": "heart_rate",
+                        "value": 72,
+                    }
+                ],
+            }
+        ],
+    }
+
+    with TestClient(app) as client:
+        client.post(
+            "/api/v1/sync/readings",
+            json=batch,
+            headers=_device_headers(),
+        )
+        response = client.get(
+            f"/api/v1/sync/batches/{batch['batch_id']}",
+            headers=_device_headers(device_id="another-device"),
+        )
+
+    assert response.status_code == 403
+
+
 def test_authentication_fails_closed_when_not_configured(monkeypatch):
     monkeypatch.delenv("AUTH_PUBLIC_KEY")
     with TestClient(app) as client:
@@ -603,4 +728,5 @@ def test_openapi_declares_bearer_authentication_for_protected_routes():
     assert "HTTPBearer" in schema["components"]["securitySchemes"]
     assert schema["paths"]["/api/v1/readings"]["get"]["security"]
     assert schema["paths"]["/api/v1/sync/readings"]["post"]["security"]
+    assert schema["paths"]["/api/v1/sync/batches/{batch_id}"]["get"]["security"]
     assert "security" not in schema["paths"]["/health"]["get"]

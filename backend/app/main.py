@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import hashlib
+import json
 import sqlite3
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -22,6 +24,7 @@ from app.schemas import (
     ReadingHistory,
     SyncAcknowledgement,
     SyncAcknowledgementItem,
+    SyncBatchStatus,
 )
 
 
@@ -64,11 +67,62 @@ def _persist_readings(
     reading_batches: list[
         tuple[ReadingBatchInput, UUID | None, dict[UUID, int] | None]
     ],
+    sync_batch: tuple[UUID, UUID, str] | None = None,
 ) -> tuple[list[HealthReading], list[SyncAcknowledgementItem]]:
     records: list[HealthReading] = []
     acknowledgements: list[SyncAcknowledgementItem] = []
     try:
         with connection:
+            if sync_batch is not None:
+                batch_id, source_device_id, payload_sha256 = sync_batch
+                existing_batch = connection.execute(
+                    "SELECT * FROM sync_batches WHERE batch_id = ?",
+                    (str(batch_id),),
+                ).fetchone()
+                if existing_batch is not None:
+                    if (
+                        existing_batch["source_device_id"] != str(source_device_id)
+                        or existing_batch["payload_sha256"] != payload_sha256
+                    ):
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="batch_id já existe com conteúdo diferente.",
+                        )
+                    rows = connection.execute(
+                        """
+                        SELECT reading_id, sequence_number, status
+                        FROM sync_batch_items
+                        WHERE batch_id = ?
+                        ORDER BY sequence_number
+                        """,
+                        (str(batch_id),),
+                    ).fetchall()
+                    acknowledgements.extend(
+                        SyncAcknowledgementItem(
+                            reading_id=row["reading_id"],
+                            sequence_number=row["sequence_number"],
+                            status=row["status"],
+                        )
+                        for row in rows
+                    )
+                    if sync_batch is not None:
+                        acknowledgements.sort(key=lambda item: item.sequence_number)
+                    return records, acknowledgements
+
+                connection.execute(
+                    """
+                    INSERT INTO sync_batches (
+                        batch_id, source_device_id, payload_sha256, received_at, status
+                    ) VALUES (?, ?, ?, ?, 'persisted')
+                    """,
+                    (
+                        str(batch_id),
+                        str(source_device_id),
+                        payload_sha256,
+                        datetime.now(timezone.utc).isoformat(),
+                    ),
+                )
+
             for payload, source_device_id, sequences_by_id in reading_batches:
                 measured_at = payload.measured_at.astimezone(timezone.utc).isoformat()
                 for measurement in payload.measurements:
@@ -135,13 +189,26 @@ def _persist_readings(
                         acknowledgement_status = "accepted"
                     records.append(_serialize_reading(row))
                     if sequence_number is not None:
-                        acknowledgements.append(
-                            SyncAcknowledgementItem(
-                                reading_id=reading_id,
-                                sequence_number=sequence_number,
-                                status=acknowledgement_status,
-                            )
+                        acknowledgement = SyncAcknowledgementItem(
+                            reading_id=reading_id,
+                            sequence_number=sequence_number,
+                            status=acknowledgement_status,
                         )
+                        acknowledgements.append(acknowledgement)
+                        if sync_batch is not None:
+                            connection.execute(
+                                """
+                                INSERT INTO sync_batch_items (
+                                    batch_id, reading_id, sequence_number, status
+                                ) VALUES (?, ?, ?, ?)
+                                """,
+                                (
+                                    str(sync_batch[0]),
+                                    str(reading_id),
+                                    sequence_number,
+                                    acknowledgement_status,
+                                ),
+                            )
     except sqlite3.IntegrityError as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -152,6 +219,8 @@ def _persist_readings(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Não foi possível guardar os registos de saúde.",
         ) from error
+    if sync_batch is not None:
+        acknowledgements.sort(key=lambda item: item.sequence_number)
     return records, acknowledgements
 
 
@@ -229,8 +298,82 @@ def sync_readings(
         )
         for reading in payload.readings
     ]
-    _, acknowledgements = _persist_readings(connection, reading_batches)
+    canonical_payload = json.dumps(
+        payload.model_dump(mode="json"),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    payload_sha256 = hashlib.sha256(canonical_payload).hexdigest()
+    _, acknowledgements = _persist_readings(
+        connection,
+        reading_batches,
+        (payload.batch_id, payload.source_device_id, payload_sha256),
+    )
     return SyncAcknowledgement(batch_id=payload.batch_id, items=acknowledgements)
+
+
+@app.get(
+    "/api/v1/sync/batches/{batch_id}",
+    response_model=SyncBatchStatus,
+    tags=["sync"],
+)
+def get_sync_batch_status(
+    batch_id: UUID,
+    connection: Connection,
+    principal: CurrentPrincipal,
+) -> SyncBatchStatus:
+    if principal.actor_type != "device":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este endpoint requer uma identidade de dispositivo.",
+        )
+    require_permission(principal, "sync:write")
+
+    try:
+        batch = connection.execute(
+            "SELECT * FROM sync_batches WHERE batch_id = ?",
+            (str(batch_id),),
+        ).fetchone()
+        if batch is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Lote de sincronização não encontrado.",
+            )
+        if batch["source_device_id"] != principal.subject:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="O lote pertence a outro dispositivo.",
+            )
+        rows = connection.execute(
+            """
+            SELECT reading_id, sequence_number, status
+            FROM sync_batch_items
+            WHERE batch_id = ?
+            ORDER BY sequence_number
+            """,
+            (str(batch_id),),
+        ).fetchall()
+    except sqlite3.Error as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Não foi possível consultar o estado da sincronização.",
+        ) from error
+
+    return SyncBatchStatus(
+        batch_id=batch["batch_id"],
+        source_device_id=batch["source_device_id"],
+        status=batch["status"],
+        received_at=datetime.fromisoformat(batch["received_at"]),
+        items=[
+            SyncAcknowledgementItem(
+                reading_id=row["reading_id"],
+                sequence_number=row["sequence_number"],
+                status=row["status"],
+            )
+            for row in rows
+        ],
+    )
 
 
 @app.get(

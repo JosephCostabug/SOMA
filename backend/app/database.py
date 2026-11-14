@@ -13,6 +13,9 @@ def get_connection() -> Iterator[sqlite3.Connection]:
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA synchronous = FULL")
+    connection.execute("PRAGMA busy_timeout = 5000")
     try:
         yield connection
     finally:
@@ -23,6 +26,8 @@ def initialize_database() -> None:
     path = database_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(path) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA synchronous = FULL")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS health_readings (
@@ -46,11 +51,18 @@ def initialize_database() -> None:
             connection.execute("ALTER TABLE health_readings ADD COLUMN source_device_id TEXT")
         if "sequence_number" not in columns:
             connection.execute("ALTER TABLE health_readings ADD COLUMN sequence_number INTEGER")
+        reading_id_index = connection.execute(
+            """
+            SELECT sql FROM sqlite_master
+            WHERE type = 'index' AND name = 'idx_health_readings_reading_id'
+            """
+        ).fetchone()
+        if reading_id_index is not None and "WHERE" in reading_id_index[0].upper():
+            connection.execute("DROP INDEX idx_health_readings_reading_id")
         connection.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_health_readings_reading_id
             ON health_readings (reading_id)
-            WHERE reading_id IS NOT NULL
             """
         )
         connection.execute(
@@ -69,5 +81,33 @@ def initialize_database() -> None:
             """
             CREATE INDEX IF NOT EXISTS idx_health_readings_astronaut_metric_time
             ON health_readings (astronaut_id, metric, measured_at)
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sync_batches (
+                batch_id TEXT PRIMARY KEY,
+                source_device_id TEXT NOT NULL,
+                payload_sha256 TEXT NOT NULL,
+                received_at TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status = 'persisted')
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sync_batch_items (
+                batch_id TEXT NOT NULL REFERENCES sync_batches(batch_id),
+                reading_id TEXT NOT NULL REFERENCES health_readings(reading_id),
+                sequence_number INTEGER NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('accepted', 'already_received')),
+                PRIMARY KEY (batch_id, reading_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_sync_batches_device_received
+            ON sync_batches (source_device_id, received_at)
             """
         )
