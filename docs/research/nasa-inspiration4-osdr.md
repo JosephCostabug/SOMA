@@ -1,0 +1,164 @@
+# NASA OSDR e Inspiration4: levantamento inicial
+
+**Estado:** levantamento documental; nenhum dado científico foi copiado para o
+repositório e nenhuma integração NASA foi implementada.
+**Consultado em:** 2026-11-14.
+**Objetivo:** identificar dados e referências reutilizáveis para pesquisa e
+contexto, sem os tratar como limites clínicos nem como telemetria operacional.
+
+## Conclusões
+
+1. O OSD-575 é confirmado no API oficial do NASA Open Science Data Repository
+   (OSDR) como **SpaceX Inspiration4 Blood Serum Metabolic Panel and
+   Immune/Cardiac Cytokine Arrays**. O registo informa soro humano, missão
+   Inspiration4 de 16 a 18 de setembro de 2021 e identificadores `LSDS-8` e
+   `GLDS-579`.
+2. OSD-575 contém painéis séricos analisados antes/depois da missão: painel
+   metabólico abrangente, painéis multiplex imune e cardiovascular. O HDCVD9 é
+   um painel de biomarcadores/proteínas cardiovasculares. Isto **não** é uma
+   série de frequência cardíaca, pressão arterial ou sinais vitais contínuos.
+3. O artigo principal da missão também relata fisiologia cardiovascular,
+   medidas com smartwatch/wearables, cognição, sono e estados comportamentais.
+   Descreve a Alertness and Mood Survey (AMS), duração do sono e avaliações
+   repetidas durante as fases da missão. Esses resultados não significam que
+   esses dados sejam todos disponibilizados no OSD-575 nem que possam ser
+   convertidos diretamente nos indicadores de monitorização deste projeto.
+4. O artigo SOMA informa depósitos associados à missão em quatro
+   repositórios/catálogos: NASA GeneLab, NASA ALSDA, SOMA Data Portal e TRISH
+   EXPAND. Para sono, comportamento e séries cardiovasculares, a próxima
+   pesquisa deve localizar e avaliar os registos/arquivos específicos nesses
+   catálogos, sem assumir que OSD-575 os contenha.
+5. Não foi encontrada uma licença explícita do ficheiro/dataset OSD-575 nos
+   campos de metadados consultados. A política segura é citar a versão exata no
+   botão de citação da página do estudo e verificar as condições de cada ficheiro
+   antes de redistribuir, incorporar num produto ou derivar uma base de dados.
+   A licença CC BY 4.0 confirmada para um artigo científico não deve ser
+   presumida para todos os dados associados.
+
+## Inventário verificado: OSD-575
+
+| Campo | Resultado |
+|---|---|
+| Acesso OSDR | [`OSD-575`](https://osdr.nasa.gov/bio/repo/data/studies/OSD-575) |
+| Registo de metadados consultado | [NASA OSDR Biological Data API — OSD-575](https://visualization.osdr.nasa.gov/biodata/api/v2/dataset/OSD-575/) |
+| Título no catálogo | SpaceX Inspiration4 Blood Serum Metabolic Panel and Immune/Cardiac Cytokine Arrays (Comprehensive Metabolic Panel and Multiplex) |
+| Identificadores | OSD-575; LSDS-8; GLDS-579 |
+| Missão/material | SpaceX Inspiration4; `Homo sapiens`; soro |
+| Datas da missão no catálogo | 2021-09-16 a 2021-09-18 |
+| Tipo de dados | Dados de ensaio laboratorial sérico; valores metabólicos e painéis multiplex imune/cardiovascular |
+| Medidas de telemetria de pulso/pressão | Não indicadas como conteúdo deste estudo |
+| Licença específica do dataset | Não identificada nos campos consultados; verificar a página e a citação/versionamento de cada ficheiro antes de reutilização/redistribuição |
+
+O API lista versões submetidas e transformadas, incluindo:
+
+- `LSDS-8_Multiplex_serum_cardiovascular_EvePanel_TRANSFORMED.csv`
+- `LSDS-8_Multiplex_serum_immune_EvePanel_TRANSFORMED.csv`
+- `LSDS-8_Multiplex_serum.immune.AlamarPanel_TRANSFORMED.csv`
+- `LSDS-8_Comprehensive_Metabolic_Panel_CMP_TRANSFORMED.csv`
+
+O catálogo descreve o HDCVD9 (Eve Technologies) como painel cardiovascular
+Discovery 9-Plex; o HD71 como painel de citocinas/quimiocinas 71-Plex; o Alamar
+NULISA-seq como painel de inflamação; e o CMP como painel metabólico. O catálogo
+relata que certas medidas foram normalizadas pela média pré-voo da tripulação e
+que dados Alamar incluem normalizações e unidades NPQ. Portanto, **não** se deve
+misturar valores normalizados, concentrações e indicadores clínicos em tempo
+real sem ler o protocolo, o dicionário de colunas e a unidade original de cada
+ensaio.
+
+## Inspiration4: evidência científica relevante
+
+O estudo principal avaliou quatro tripulantes civis numa missão orbital de três
+dias. O artigo descreve wearables/smartwatches, fisiologia, cognição,
+neurovestibular e estados comportamentais. A AMS recolheu sono e estado
+comportamental nas fases da missão; o artigo relata duração de sono média em
+voo e resultados subjetivos de alerta/humor. Estes achados são uma referência
+para desenhar variáveis e protocolos, não uma população de referência clínica:
+amostra pequena, missão curta e medições dependentes do protocolo.
+
+O estudo complementar de perfis imunes/multi-ômicos analisa respostas celulares
+e imunes. É contexto de investigação de mecanismos, não uma fonte direta para
+calibrar limites de frequência cardíaca, glicemia ou outros sinais vitais.
+
+### Candidatos para a etapa seguinte
+
+| Necessidade | Fonte/caminho de descoberta | Critério de seleção |
+|---|---|---|
+| Sono e ritmos | Artigo Inspiration4 e arquivos associados em OSDR/SOMA/TRISH; NASA Life Sciences Portal / Standard Measures | Confirmar dados por participante/fase, método (diário, AMS, actigrafia), unidades, datas e licença |
+| Humor, alerta e comportamento | AMS descrita no artigo; procurar dados/arquivos de avaliação comportamental vinculados à missão | Preservar escala, versão do instrumento, direção da escala, fase e contexto; não converter em diagnóstico |
+| Fisiologia cardiovascular | Wearables e medidas fisiológicas descritos no artigo; OSD-575 para biomarcadores séricos cardiovasculares; NASA Life Sciences Portal | Separar séries vitais (HR/pressão) de biomarcadores séricos; identificar sensor, taxa de amostragem, unidades, sincronização e qualidade |
+| Contexto de missões e medidas padronizadas | [NASA Life Sciences Portal](https://nlsp.nasa.gov/explore) e [Standard Measures](https://nlsp.nasa.gov/resources/standard-measures) | Preferir medidas humanas de voo/análogos com protocolo público e metadados comparáveis |
+
+Uma seleção de datasets adicionais só deve ser feita depois de confirmar,
+individualmente, que o OSDR/NLSP contém os arquivos pretendidos, as variáveis,
+os metadados de qualidade e as condições de acesso/licença. A API de dados
+biológicos do OSDR anuncia pesquisa de metadados e consulta de datasets, ensaios
+e amostras; os seus filtros e formatos devem ser usados para catalogação
+reprodutível.
+
+## Direitos, uso e crédito
+
+- **Citar o dataset exato:** a FAQ do NASA OSDR recomenda usar o botão de citação
+  da página do estudo; a citação inclui a versão e pode ser exportada em BibTeX
+  ou RIS. Para OSD-575, obter essa citação antes de publicar ou distribuir
+  resultados; este levantamento não inventa um DOI nem uma versão do dataset.
+- **Crédito institucional:** a FAQ recomenda reconhecer o NASA OSDR quando os
+  dados, assistência ou revisão do OSDR forem usados. A formulação geral
+  recomendada é: “Data are courtesy of the NASA Open Science Data Repository
+  (https://osdr.nasa.gov/bio/repo)”. Para visualizações, seguir também as
+  frases específicas do portal e indicar a versão quando solicitado.
+- **Licenças são por recurso:** a publicação em acesso aberto e a disponibilidade
+  de download não constituem, por si sós, prova de que todos os dados, tabelas,
+  imagens ou materiais de terceiros tenham a mesma licença. O artigo de Jones
+  et al. tem licença CC BY 4.0 registada para o DOI do artigo; isso cobre o
+  artigo nos termos dessa licença, mas não estende automaticamente a licença
+  aos arquivos de OSDR, SOMA ou TRISH.
+- **Antes de redistribuir:** guardar a URL do recurso, accession, versão/data de
+  consulta, citação oficial, licença/termos aplicáveis e proveniência; conferir
+  consentimento, condições de acesso, atribuição requerida e restrições dos
+  contribuidores. Não copiar dados pessoais ou dados com acesso controlado para
+  o repositório.
+- **Uso no sistema:** dados científicos não são valores normativos nem
+  recomendações clínicas. Não alimentar alertas de apoio operacional ou decisões
+  de saúde com valores de pesquisa sem revisão científica, médica, regulatória
+  e de risco apropriada.
+
+### Modelo de crédito para documentação do projeto
+
+> Dados do NASA Open Science Data Repository (OSDR), estudo OSD-575
+> (Inspiration4), consultados em 2026-11-14. Citar a versão e a referência
+> bibliográfica fornecidas pela página oficial do dataset; seguir a licença e
+> os termos de uso aplicáveis ao arquivo utilizado.
+
+Este texto é um registo de proveniência do projeto, não substitui a citação
+oficial do estudo nem os termos do titular dos dados.
+
+## Referências
+
+1. **NASA OSDR.** OSD-575, *SpaceX Inspiration4 Blood Serum Metabolic Panel and
+   Immune/Cardiac Cytokine Arrays*. [Página do estudo](https://osdr.nasa.gov/bio/repo/data/studies/OSD-575);
+   [metadados/API](https://visualization.osdr.nasa.gov/biodata/api/v2/dataset/OSD-575/).
+   Arquivos e protocolos consultados via API em 2026-11-14.
+2. **Jones CW et al.** “Molecular and physiological changes in the SpaceX
+   Inspiration4 civilian crew.” *Nature* 632, 1155–1164 (2024).
+   [DOI: 10.1038/s41586-024-07648-x](https://doi.org/10.1038/s41586-024-07648-x);
+   [texto completo PMC11357997](https://pmc.ncbi.nlm.nih.gov/articles/PMC11357997/);
+   [registo Crossref](https://api.crossref.org/works/10.1038/s41586-024-07648-x).
+   O registo Crossref do DOI indica CC BY 4.0 para o artigo; confirmar as
+   condições na página do editor antes de reutilizar conteúdo específico.
+3. **Kim J et al.** “Single-cell multi-ome and immune profiles of the
+   Inspiration4 crew reveal conserved, cell-type, and sex-specific responses to
+   spaceflight.” *Nature Communications* 15, 4954 (2024).
+   [DOI: 10.1038/s41467-024-49211-2](https://doi.org/10.1038/s41467-024-49211-2);
+   [Europe PMC](https://europepmc.org/article/MED/38862516).
+4. **Overbey EG et al.** “The Space Omics and Medical Atlas (SOMA) and
+   international astronaut biobank.” *Nature* 632, 1145–1154 (2024).
+   [DOI: 10.1038/s41586-024-07639-y](https://doi.org/10.1038/s41586-024-07639-y);
+   [Europe PMC](https://europepmc.org/article/MED/38862028).
+5. **Gebre SG et al.** “NASA Open Science Data Repository: Open Science for
+   Life in Space.” *Nucleic Acids Research* 53(D1), D1697–D1710.
+   [DOI: 10.1093/nar/gkae1116](https://doi.org/10.1093/nar/gkae1116).
+6. **NASA OSDR FAQ.** [Citação, crédito institucional, acesso e orientação sobre
+   os portais](https://science.nasa.gov/reference/osdr-faq/).
+7. **NASA OSDR Data API.** [Documentação OpenAPI](https://visualization.osdr.nasa.gov/biodata/api/).
+8. **NASA Life Sciences Portal.** [Pesquisa de dados humanos](https://nlsp.nasa.gov/explore);
+   [NASA Standard Measures](https://nlsp.nasa.gov/resources/standard-measures).
