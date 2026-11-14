@@ -95,6 +95,53 @@ biológicos do OSDR anuncia pesquisa de metadados e consulta de datasets, ensaio
 e amostras; os seus filtros e formatos devem ser usados para catalogação
 reprodutível.
 
+## Seguimento: dados de sono, comportamento e wearable
+
+A revisão do artigo principal e das páginas do projeto confirma que estas
+medidas foram recolhidas ([Jones et al., 2024](https://pmc.ncbi.nlm.nih.gov/articles/PMC11357997/)),
+mas **não** identifica um accession público nem fornece os arquivos brutos
+desses sinais:
+
+| Domínio | O que a publicação confirma | Limite da evidência/acesso |
+|---|---|---|
+| Sono e comportamento | A Alertness and Mood Survey (AMS) recolheu duração do sono e estado comportamental. A duração foi derivada de horários de sono e despertar autorrelatados. Dez itens AMS usaram escalas tipo Likert de 11 pontos nas fases pré-voo, voo e pós-voo (N=26 respostas por item). Incluiu qualidade do sono, sonolência, carga de trabalho, exaustão, doença, humor e stress. | Não é evidência de actigrafia nem de medição automática do sono. A figura suplementar descreve os resultados, mas não identifica o accession nem disponibiliza os registos individuais. |
+| Cardiovascular | O Apple Watch Series 6 foi usado em períodos selecionados das três fases para frequência cardíaca (HR), variabilidade da frequência cardíaca (HRV), saturação de oxigénio (SpO₂), atividade e consumo de energia. A Extended Data Fig. 12 reporta médias horárias: HR N=424, HRV N=127 e SpO₂ N=177; medições de SpO₂ falharam em voo para dois tripulantes. | Estes números são contagens de observações sumarizadas no artigo, não frequência de amostragem ou cobertura completa. A publicação não fornece aqui o ficheiro bruto, esquema, unidades detalhadas de todos os campos ou accession específico. |
+| ECG e outros dados de wearable | A discussão do artigo inclui HR e eletrocardiograma entre os dados de wearables guardados nos repositórios da missão. | A menção não permite concluir que haja um traçado ECG público, nem identificar formato, taxa de amostragem, titularidade ou licença. |
+
+O artigo informa que os conjuntos foram depositados em quatro repositórios:
+NASA OSDR (incluindo GeneLab e ALSDA), SOMA Data Portal e TRISH EXPAND
+(TrialX) ([Jones et al., 2024](https://pmc.ncbi.nlm.nih.gov/articles/PMC11357997/)).
+A discussão caracteriza o acesso aos dados da missão como
+controlado e enumera, entre os conteúdos, inquéritos qualitativos recebidos
+por aplicações móveis, dados de wearables e dados médicos. A página pública
+do [SOMA Browser](https://soma.weill.cornell.edu/apps/SOMA_Browser/) é útil
+para explorar as análises omics, mas não é, por si só, prova de que os registos
+brutos de AMS ou wearable estejam disponíveis sem autorização.
+
+Até esta revisão, o único accession OSDR da missão confirmado com ficheiros
+listáveis diretamente foi **OSD-575**. A lista oficial de
+[ficheiros de OSD-575](https://visualization.osdr.nasa.gov/biodata/api/v2/dataset/OSD-575/files/)
+contém painéis séricos metabólico, imune e cardiovascular, além do pacote de
+metadados ISA; não contém ficheiros identificados como sono, AMS, HR, HRV,
+SpO₂ ou ECG. Não foi possível confirmar nos catálogos públicos consultados um
+accession ou download separado para essas modalidades. Isto é um resultado
+negativo da pesquisa realizada, não prova de que os dados não existam nos
+repositórios controlados.
+
+### Decisão para a integração
+
+1. Manter OSD-575 como referência de ensaios séricos, separado dos sinais
+   biométricos em tempo real.
+2. Não copiar nem integrar dados individuais de AMS ou wearable até obter o
+   accession e ficheiro exatos, documentação de campos/unidades, condições de
+   acesso, licença e autorização aplicável.
+3. Na próxima etapa, solicitar ou localizar nos portais autorizados o
+   inventário específico de ficheiros de sono/AMS e wearable, e registar a
+   proveniência e versão fornecidas pelo titular.
+4. Se a autorização não permitir redistribuição, o backend deve guardar apenas
+   metadados bibliográficos ou referenciar a origem autorizada; não armazenar
+   cópias dos dados brutos.
+
 ## Direitos, uso e crédito
 
 - **Citar o dataset exato:** a FAQ do NASA OSDR recomenda usar o botão de citação
@@ -162,3 +209,7 @@ oficial do estudo nem os termos do titular dos dados.
 7. **NASA OSDR Data API.** [Documentação OpenAPI](https://visualization.osdr.nasa.gov/biodata/api/).
 8. **NASA Life Sciences Portal.** [Pesquisa de dados humanos](https://nlsp.nasa.gov/explore);
    [NASA Standard Measures](https://nlsp.nasa.gov/resources/standard-measures).
+9. **SOMA.** [Página do projeto Inspiration4 e ligações para o SOMA Browser](https://soma.weill.cornell.edu/);
+   [SOMA Browser](https://soma.weill.cornell.edu/apps/SOMA_Browser/). A página do
+   browser indica que o conteúdo do site é protegido por direitos autorais salvo
+   indicação em contrário; isso não define, por si só, a licença de cada dataset.
