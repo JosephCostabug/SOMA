@@ -540,29 +540,31 @@
         return `<line class="chart-grid" x1="${margin.left}" x2="${width - margin.right}" y1="${position}" y2="${position}"></line>
           <text class="chart-axis" x="${margin.left - 10}" y="${position + 4}" text-anchor="end">${formatNumber(value)}</text>`;
       }).join("");
-      let drawing = "";
-      let previous = false;
+      let ranges = "";
+      let pointsDrawing = "";
+      const pathSegments = [];
+      let currentSegment = [];
       points.forEach((point, index) => {
         const px = x(index);
         if (point.mean === null) {
-          previous = false;
+          if (currentSegment.length) pathSegments.push(currentSegment.join(" "));
+          currentSegment = [];
           return;
         }
         const py = y(point.mean);
-        drawing += `<line class="chart-range" x1="${px}" x2="${px}" y1="${y(point.observed_max)}" y2="${y(point.observed_min)}"></line>
+        ranges += `<line class="chart-range" x1="${px}" x2="${px}" y1="${y(point.observed_max)}" y2="${y(point.observed_min)}"></line>
           <line class="chart-cap" x1="${px - 6}" x2="${px + 6}" y1="${y(point.observed_max)}" y2="${y(point.observed_max)}"></line>
-          <line class="chart-cap" x1="${px - 6}" x2="${px + 6}" y1="${y(point.observed_min)}" y2="${y(point.observed_min)}"></line>
-          ${previous ? "" : `<path class="chart-line" d="M${px},${py}`}`;
-        if (previous) drawing += ` L${px},${py}`;
-        if (index === points.length - 1 || points[index + 1]?.mean === null) drawing += `"></path>`;
-        drawing += `<circle class="chart-point" cx="${px}" cy="${py}" r="6"><title>${escapeHtml(point.timepoint)}: ${formatNumber(point.mean)} ${escapeHtml(metric.unit)}</title></circle>`;
-        previous = true;
+          <line class="chart-cap" x1="${px - 6}" x2="${px + 6}" y1="${y(point.observed_min)}" y2="${y(point.observed_min)}"></line>`;
+        currentSegment.push(`${currentSegment.length ? "L" : "M"}${px},${py}`);
+        pointsDrawing += `<circle class="chart-point" cx="${px}" cy="${py}" r="6"><title>${escapeHtml(point.timepoint)}: ${formatNumber(point.mean)} ${escapeHtml(metric.unit)}</title></circle>`;
       });
+      if (currentSegment.length) pathSegments.push(currentSegment.join(" "));
+      const lines = pathSegments.map(path => `<path class="chart-line" d="${path}"></path>`).join("");
       const labels = points.map((point, index) =>
         `<text class="chart-axis" x="${x(index)}" y="${height - 13}" text-anchor="middle">${escapeHtml(point.timepoint)}</text>`
       ).join("");
       container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(metric.label)} por ponto de recolha; linha de médias e intervalo observado">
-        ${axis}${drawing}${labels}
+        ${axis}${ranges}${lines}${pointsDrawing}${labels}
       </svg>`;
     }
 

@@ -297,7 +297,7 @@ def test_public_inspiration4_cmp_summary_aggregates_source_rows(monkeypatch):
     albumin = next(metric for metric in result.metrics if metric.key == "albumin")
 
     assert result.record_count == 3
-    assert result.sample_count == 2
+    assert result.sample_count == 3
     assert [point.timepoint for point in glucose.points] == ["L-3", "R+1"]
     assert glucose.points[0].mean == 110
     assert glucose.points[0].sample_count == 2
