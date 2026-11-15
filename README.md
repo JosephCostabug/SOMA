@@ -1,7 +1,8 @@
-# Monitorização de Saúde Espacial
+# SOMA — Monitorização de Saúde Espacial
 
-Backend inicial para registar e consultar indicadores de saúde de astronautas,
-usando Python, FastAPI e SQLite.
+Protótipo web para registar e consultar indicadores de saúde da tripulação.
+O backend usa Python, FastAPI e SQLite; a interface é HTML, CSS e JavaScript
+servidos pelo próprio FastAPI, sem etapa de build de frontend.
 
 ## Executar localmente
 
@@ -17,6 +18,37 @@ A documentação interativa da API fica disponível em `http://127.0.0.1:8000/do
 O painel web fica disponível em `http://127.0.0.1:8000/`.
 Por omissão, a base de dados é criada em `data/health_monitoring.sqlite3`.
 Define `HEALTH_DB_PATH` para escolher outro caminho.
+
+## Funcionamento ponta a ponta
+
+O FastAPI serve a interface em `/`, a API em `/api/...` e a documentação OpenAPI
+em `/docs`. No arranque, inicializa o esquema SQLite. `GET /health` verifica o
+serviço; `GET /ready` verifica o estado operacional, incluindo a configuração
+da missão. A base local é a fonte persistente; a demo e os estados temporários
+da interface não são guardados nela.
+
+| Fluxo | Funcionamento |
+| --- | --- |
+| Demonstração | Abre sem token e mostra valores sintéticos fixos no navegador. O cenário de missão e o checklist são ilustrativos; o checklist só mantém progresso enquanto a página está aberta. Nada é enviado à API nem guardado. |
+| Consulta autorizada | O utilizador fornece ID, período e token de missão com `readings:read`. O painel consulta medições, cobertura e alertas; tendências são estatísticas descritivas. O token fica apenas em memória e pode ser removido em “Terminar acesso”. |
+| Registo offline | O separador “Registo offline” prepara medições e mantém-nas numa fila IndexedDB do navegador. O envio é manual, exige token de dispositivo e usa `POST /api/v1/sync/readings`; a fila só remove itens confirmados. O armazenamento local não é cifrado pela aplicação. |
+| Sincronização terrestre opcional | A API v2 aceita apenas medições explicitamente elegíveis e cria uma outbox transacional. Um worker independente envia o lote ao receptor terrestre configurado e valida o recibo assinado. Persistir a bordo não significa que a Terra recebeu os dados. |
+| Dados NASA OSDR | Consulta/importação é uma função separada e autorizada. Os dados científicos não são convertidos em medições de astronautas nem usados por alertas. |
+
+O painel corporal permite selecionar sistemas e ver indicadores associados. Em
+modo autorizado, os rótulos mostram cobertura observada; na demo, indicam
+quantas leituras sintéticas são exibidas. Nenhum destes estados é semáforo de
+saúde. O detalhe do sistema mostra observações, próximos passos gerais e quando
+seguir o protocolo médico, mas não infere efeitos causais do espaço sem uma
+referência HRP aprovada. A aplicação não fornece diagnóstico, aptidão médica ou
+recomendações terapêuticas.
+
+Para uso autenticado, o serviço precisa de um ficheiro de bootstrap da missão,
+chaves e delegações provisionadas; consulte **Autenticação e autorização**. As
+rotas protegidas permanecem fechadas sem configuração válida. As regras de
+alerta também exigem configuração, aprovação e ativação explícitas; consulte
+**Alertas de monitorização**. O catálogo NASA, a sincronização bordo–Terra e os
+backups têm secções próprias abaixo com configuração e limites.
 
 ## Visão operativa do painel
 
@@ -43,10 +75,16 @@ estado de sincronização e apoio local, não uma decisão clínica.
 
 O ecrã inicial apresenta uma figura humana esquemática com tags interativas por
 sistema corporal. A figura 3D é um modelo visual para navegação; não representa
-anatomia clínica nem localiza medições no corpo. O botão de demonstração abre
-sem credenciais e mostra valores sintéticos gerados no navegador; eles não são
-enviados à API nem guardados. O acesso operacional continua disponível apenas
-com token autorizado, sem cadastro público.
+anatomia clínica nem localiza medições no corpo. O detalhe indica cobertura ou
+leituras sintéticas e apresenta contexto, observações, próximos passos gerais e
+orientação para procurar apoio. Não há classificação clínica por cor nem
+comparação com uma linha de base calculada.
+
+O botão de demonstração abre sem credenciais e mostra valores sintéticos e um
+cenário de missão explicitamente simulado. O checklist diário é apenas
+ilustrativo, mantém estado temporário no navegador e reinicia ao terminar a
+demo. Estes valores não são enviados à API nem guardados. O acesso operacional
+continua disponível apenas com token autorizado, sem cadastro público.
 
 A interface não apresenta fontes ou créditos dos conjuntos de dados nem páginas
 de documentação; estes detalhes e a proveniência científica ficam neste README.
@@ -685,7 +723,25 @@ ou os controlos de missão já estejam implementados.
 
 ## Testes
 
+### Suite automatizada
+
 ```powershell
 $env:PYTHONPATH = "backend"
 python -m pytest backend\tests
 ```
+
+### Verificação manual do painel
+
+1. Inicie o serviço pelos passos de **Executar localmente** e abra
+   `http://127.0.0.1:8000/`.
+2. Inicie a demonstração, selecione sistemas no mapa/lista e marque/desmarque
+   os passos do dia. Confirme que o contador atualiza e que “Terminar
+   demonstração” remove o estado temporário.
+3. Redimensione o navegador para 390, 820 e 1366 px; confirme que os cartões,
+   controles e figura não ficam cortados.
+4. Verifique `http://127.0.0.1:8000/health` e `http://127.0.0.1:8000/docs`.
+   O percurso operacional e a sincronização exigem bootstrap e credenciais
+   provisionadas; não use dados reais neste protótipo.
+
+Esta verificação manual não substitui testes end-to-end, validação de
+acessibilidade nem aprovação clínica e operacional.

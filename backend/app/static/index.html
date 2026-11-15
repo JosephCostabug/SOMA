@@ -359,12 +359,22 @@
     .body-system-detail p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
     .body-system-detail-values { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
     .body-system-detail-value { border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; background: var(--surface); font-size: 13px; }
+    .system-guidance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-top: 12px; }
+    .system-guidance { border: 1px solid var(--border); border-radius: 10px; padding: 11px; background: var(--surface); }
+    .system-guidance h4 { margin: 0; font-size: 13px; }
+    .system-guidance p { font-size: 13px; }
     .mission-query-card .mission-form { grid-template-columns: 1fr 1fr; }
     .demo-entry { display: grid; gap: 10px; margin-top: 16px; }
     .demo-entry p { margin: 0; color: var(--muted); font-size: 14px; }
     .mission-access { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
     .mission-access summary { color: var(--accent); cursor: pointer; font-weight: 750; }
     .demo-dashboard { display: grid; gap: 16px; margin-top: 18px; }
+    .demo-mission-context { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--accent-soft); }
+    .demo-mission-context p { margin: 0; }
+    .demo-checklist { display: grid; gap: 10px; margin-top: 12px; }
+    .demo-task { display: flex; min-height: 44px; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; background: var(--surface); cursor: pointer; }
+    .demo-task input { width: 18px; min-width: 18px; min-height: 18px; margin: 0; accent-color: var(--accent); }
+    .demo-task-summary { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
     .demo-reading-card { min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--surface-soft); }
     .demo-reading-card small { display: block; color: var(--muted); font-size: 10px; font-weight: 850; letter-spacing: .08em; }
     .demo-reading-card strong { display: block; margin-top: 5px; font-size: 21px; font-variant-numeric: tabular-nums; }
@@ -756,6 +766,12 @@
             <h3 id="body-system-detail-title">Selecione uma região ou tag</h3>
             <p id="body-system-detail-copy">Escolha um sistema para consultar os indicadores associados.</p>
             <div id="body-system-detail-values" class="body-system-detail-values"></div>
+            <div class="system-guidance-grid">
+              <section class="system-guidance"><h4>Contexto espacial</h4><p id="body-system-context">Sem contexto validado configurado.</p></section>
+              <section class="system-guidance"><h4>Observações</h4><p id="body-system-observation">Selecione um sistema.</p></section>
+              <section class="system-guidance"><h4>Próximo passo</h4><p id="body-system-next-step">Carregue dados ou inicie a demonstração.</p></section>
+              <section class="system-guidance"><h4>Quando pedir apoio</h4><p id="body-system-help">Siga sempre o protocolo médico da missão.</p></section>
+            </div>
           </section>
           <p id="body-map-status" class="body-map-status" role="status" aria-live="polite">Carregue um resumo autorizado para ver a cobertura observada.</p>
         </section>
@@ -799,10 +815,20 @@
       </div>
       <section id="demo-dashboard" class="demo-dashboard" aria-labelledby="demo-dashboard-title" hidden>
         <div class="notice" role="note">Demonstração com dados sintéticos — estes valores não pertencem a uma pessoa nem têm interpretação clínica.</div>
+        <section class="demo-mission-context" aria-label="Contexto de missão simulado">
+          <p><strong>Cenário simulado:</strong> dia 112 · trânsito · atraso de comunicação de 12 min.</p>
+        </section>
         <section class="card">
           <h2 id="demo-dashboard-title">Exemplo de check-in diário</h2>
           <p class="dataset-status">Os cartões são gerados localmente e não são enviados nem guardados.</p>
           <div id="demo-reading-cards" class="mission-indicators"></div>
+          <h3>Passos do dia</h3>
+          <div class="demo-checklist" role="group" aria-label="Checklist diário de demonstração">
+            <label class="demo-task"><input type="checkbox" data-demo-task="measurements"> Rever medições disponíveis</label>
+            <label class="demo-task"><input type="checkbox" data-demo-task="baseline"> Comparar com a linha de base pessoal</label>
+            <label class="demo-task"><input type="checkbox" data-demo-task="check-in"> Completar o check-in de sono e bem-estar</label>
+          </div>
+          <p id="demo-task-summary" class="demo-task-summary" role="status" aria-live="polite">0 de 3 passos concluídos. O progresso existe apenas nesta página.</p>
         </section>
       </section>
       <div id="mission-results" class="mission-results" hidden>
@@ -1003,6 +1029,7 @@
       state.indicatorFilter = "all";
       state.selectedBodySystem = null;
       state.demoMode = false;
+      resetDemoChecklist();
       byId("demo-dashboard").hidden = true;
       byId("demo-reading-cards").innerHTML = "";
       byId("demo-start").hidden = false;
@@ -1061,11 +1088,16 @@
         const observed = indicators.filter(item =>
           (coverageByMetric.get(item.metric)?.sample_count || 0) > 0
         ).length;
-        const detail = coverage && indicators.length
-          ? `${observed} de ${indicators.length} indicadores com registos`
-          : indicators.length
-            ? `${indicators.length} indicadores no catálogo`
-            : "Explorar sistema";
+        const demoCount = state.demoMode
+          ? demoReadings.filter(reading => reading.system === system.key).length
+          : 0;
+        const detail = state.demoMode
+          ? `${demoCount} leituras sintéticas`
+          : coverage && indicators.length
+            ? `${observed} de ${indicators.length} indicadores com registos`
+            : indicators.length
+              ? `${indicators.length} indicadores no catálogo`
+              : "Explorar sistema";
         return `<button class="body-system-button" type="button" data-body-system="${system.key}" aria-pressed="${state.selectedBodySystem === system.key}">
             <span class="body-system-code" aria-hidden="true">${system.code}</span>
             <span class="body-system-copy"><strong>${labelForSystem(system.key)}</strong><span>${detail}</span></span>
@@ -1085,6 +1117,10 @@
         byId("body-system-detail-title").textContent = "Selecione uma região ou tag";
         byId("body-system-detail-copy").textContent = "Escolha um sistema para consultar os indicadores associados.";
         byId("body-system-detail-values").innerHTML = "";
+        byId("body-system-context").textContent = "Sem referência HRP aprovada associada.";
+        byId("body-system-observation").textContent = "Selecione um sistema.";
+        byId("body-system-next-step").textContent = "Carregue dados autorizados ou inicie a demonstração.";
+        byId("body-system-help").textContent = "Siga o protocolo médico da missão.";
         return;
       }
       byId("body-system-detail-title").textContent = labelForSystem(system.key);
@@ -1100,6 +1136,25 @@
       byId("body-system-detail-values").innerHTML = readings.map(reading => `
         <span class="body-system-detail-value"><strong>${escapeHtml(reading.label)}:</strong> ${escapeHtml(reading.value)}</span>
       `).join("");
+      const observedCount = indicators.filter(indicator =>
+        (state.missionCoverage?.indicators || []).some(item =>
+          item.metric === indicator.metric && item.sample_count > 0
+        )
+      ).length;
+      byId("body-system-context").textContent =
+        "Sem referência HRP aprovada associada; o painel não infere efeitos causais das medições.";
+      byId("body-system-observation").textContent = state.demoMode
+        ? readings.length
+          ? `${readings.length} leituras sintéticas exibidas; não representam uma pessoa.`
+          : "Sem leituras sintéticas para este sistema."
+        : state.missionCoverage
+          ? `${observedCount} de ${indicators.length} indicadores com registos no período consultado.`
+          : "Sem dados de missão carregados.";
+      byId("body-system-next-step").textContent = state.demoMode
+        ? "Na operação real, compare tendências apenas com a linha de base individual e orientações aprovadas."
+        : "Consulte a tendência descritiva e o protocolo aprovado; este painel não calcula diagnóstico.";
+      byId("body-system-help").textContent =
+        "Perante sintomas novos, intensos ou em agravamento, contacte a equipa médica pelo protocolo da missão.";
     }
 
     function selectBodySystem(systemKey) {
@@ -1116,6 +1171,7 @@
       state.missionToken = "";
       state.selectedBodySystem = "cardiovascular";
       state.indicatorFilter = "all";
+      resetDemoChecklist();
       clearMissionDashboardData();
       byId("mission-results").hidden = true;
       byId("demo-dashboard").hidden = false;
@@ -1136,7 +1192,16 @@
       renderBodySystems();
     }
 
+    function resetDemoChecklist() {
+      document.querySelectorAll("[data-demo-task]").forEach(task => {
+        task.checked = false;
+      });
+      byId("demo-task-summary").textContent =
+        "0 de 3 passos concluídos. O progresso existe apenas nesta página.";
+    }
+
     function endDemo() {
+      resetDemoChecklist();
       clearMissionSession();
       byId("demo-status").textContent = "Demonstração terminada; os valores foram removidos da página.";
     }
@@ -1804,6 +1869,14 @@
       }
     }
 
+    document.addEventListener("change", event => {
+      const task = event.target.closest("[data-demo-task]");
+      if (!task || !state.demoMode) return;
+      const tasks = [...document.querySelectorAll("[data-demo-task]")];
+      const completed = tasks.filter(item => item.checked).length;
+      byId("demo-task-summary").textContent =
+        `${completed} de ${tasks.length} passos concluídos. O progresso existe apenas nesta página.`;
+    });
     document.addEventListener("click", event => {
       const navButton = event.target.closest("[data-view]");
       if (navButton) setView(navButton.dataset.view);
@@ -1836,6 +1909,7 @@
         return;
       }
       state.demoMode = false;
+      resetDemoChecklist();
       byId("demo-dashboard").hidden = true;
       byId("demo-reading-cards").innerHTML = "";
       byId("demo-start").hidden = false;
