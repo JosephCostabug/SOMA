@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from app.database import connect_database, initialize_database
 from app.main import app
 from app.identity_bootstrap import (
+    AuthenticationPublicKey,
     IdentityBootstrapError,
     MissionIdentityBootstrap,
     OnboardTokenVerifier,
@@ -26,6 +27,12 @@ from app.key_management import (
     KeyState,
     VerificationKey,
     VerificationKeySet,
+)
+from app.nasa_osdr import (
+    OSDRDatasetFile,
+    OSDRDatasetSearchHit,
+    OSDRMetadataError,
+    OSDRStudyMetadata,
 )
 from app.mission_identity import (
     ActorType,
@@ -39,6 +46,7 @@ from app.mission_identity import (
     MissionState,
 )
 from app.provisioning import load_provisioned_mission_configuration
+from app.schemas import Metric, MonitoringAlertRule
 from app.token_service import (
     CredentialIssueError,
     OnboardTokenService,
@@ -70,19 +78,56 @@ _ONBOARD_FINGERPRINT = hashlib.sha256(
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     )
 ).hexdigest()
+_AUTH_PRIVATE_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+_AUTH_PUBLIC_KEY = _AUTH_PRIVATE_KEY.public_key().public_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+).decode()
+_AUTH_FINGERPRINT = hashlib.sha256(
+    _AUTH_PRIVATE_KEY.public_key().public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+).hexdigest()
 
 
-def _create_bootstrap_file(path):
+def _create_bootstrap_file(
+    path,
+    monitoring_alert_rules=(),
+    enable_alert_configuration=False,
+    enable_alert_acknowledgement=False,
+    enable_offline_authentication=False,
+    enable_scientific_data=False,
+):
     now = datetime.now(timezone.utc).replace(microsecond=0)
     mission_start = now - timedelta(days=30)
     mission_end = now + timedelta(days=365)
+    alert_permissions = {"alerts:configure"} if enable_alert_configuration else set()
+    if enable_alert_acknowledgement:
+        alert_permissions.add("alerts:acknowledge")
+    scientific_data_permissions = (
+        {
+            "scientific-data:read",
+            "scientific-data:sync",
+            "scientific-data:import",
+        }
+        if enable_scientific_data
+        else set()
+    )
+    user_authentication_key_id = (
+        "user-01-auth-key" if enable_offline_authentication else None
+    )
     identities = (
         MissionIdentity(
             identity_id=_ISSUER,
             mission_id=_MISSION_ID,
             actor_type=ActorType.SERVICE,
             state=IdentityState.ACTIVE,
-            permissions=frozenset({"readings:read", "readings:write", "sync:write"}),
+            permissions=frozenset(
+                {"readings:read", "readings:write", "sync:write"}
+                | alert_permissions
+                | scientific_data_permissions
+            ),
             astronaut_ids=frozenset({"astronaut-01", "astronaut-02"}),
             valid_from=mission_start,
             expires_at=mission_end,
@@ -94,10 +139,20 @@ def _create_bootstrap_file(path):
             mission_id=_MISSION_ID,
             actor_type=ActorType.USER,
             state=IdentityState.ACTIVE,
-            permissions=frozenset({"readings:read", "readings:write"}),
+            permissions=frozenset(
+                {"readings:read", "readings:write"}
+                | alert_permissions
+                | scientific_data_permissions
+            ),
             astronaut_ids=frozenset({"astronaut-01", "astronaut-02"}),
             valid_from=mission_start,
             expires_at=mission_end,
+            key_id=user_authentication_key_id,
+            public_key_thumbprint=(
+                f"sha256:{_AUTH_FINGERPRINT}"
+                if enable_offline_authentication
+                else None
+            ),
         ),
         *(
             MissionIdentity(
@@ -152,7 +207,11 @@ def _create_bootstrap_file(path):
         onboard_service_id=_ISSUER,
         onboard_key_id=_ONBOARD_KEY_ID,
         allowed_actor_types=frozenset({ActorType.USER, ActorType.DEVICE}),
-        permissions=frozenset({"readings:read", "readings:write", "sync:write"}),
+        permissions=frozenset(
+            {"readings:read", "readings:write", "sync:write"}
+            | alert_permissions
+            | scientific_data_permissions
+        ),
         astronaut_ids=frozenset({"astronaut-01", "astronaut-02"}),
         policy_id="test-policy",
         state=DelegationState.ACTIVE,
@@ -184,6 +243,18 @@ def _create_bootstrap_file(path):
             audience=_AUDIENCE,
         ),
         initial_signed_delegation_tokens=(delegation_token,),
+        monitoring_alert_rules=monitoring_alert_rules,
+        authentication_keys=(
+            (
+                AuthenticationPublicKey(
+                    identity_id="user-01",
+                    key_id="user-01-auth-key",
+                    public_key_pem=_AUTH_PUBLIC_KEY,
+                ),
+            )
+            if enable_offline_authentication
+            else ()
+        ),
     )
     path.write_text(
         json.dumps(bootstrap.model_dump(mode="json")),
@@ -197,7 +268,20 @@ def _create_bootstrap_file(path):
 def configure_authentication(monkeypatch, tmp_path):
     bootstrap_path = tmp_path / "mission-bootstrap.json"
     _create_bootstrap_file(bootstrap_path)
+    signing_key_path = tmp_path / "onboard-signing-key.pem"
+    signing_key_path.write_bytes(
+        _PRIVATE_KEY.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
+    signing_key_path.chmod(0o600)
     monkeypatch.setenv("MISSION_BOOTSTRAP_PATH", str(bootstrap_path.resolve()))
+    monkeypatch.setenv("ONBOARD_TOKEN_SIGNING_KEY_PATH", str(signing_key_path.resolve()))
+    monkeypatch.setenv("AUTH_CHALLENGE_TTL_SECONDS", "300")
+    monkeypatch.setenv("AUTH_CHALLENGE_RATE_LIMIT_MAX_REQUESTS", "100")
+    monkeypatch.setenv("AUTH_CHALLENGE_RATE_LIMIT_WINDOW_SECONDS", "60")
     monkeypatch.setenv("HEALTH_DB_PATH", str((tmp_path / "health.sqlite3").resolve()))
 
 
@@ -250,6 +334,25 @@ def _authorization_headers(
     finally:
         connection.close()
     return {"Authorization": f"Bearer {token}"}
+
+
+def _authentication_proof(challenge, private_key=_AUTH_PRIVATE_KEY):
+    claims = {
+        "iss": challenge["subject"],
+        "aud": challenge["issuer"],
+        "iat": int(datetime.fromisoformat(challenge["issued_at"]).timestamp()),
+        "exp": int(datetime.fromisoformat(challenge["expires_at"]).timestamp()),
+        "jti": challenge["challenge_id"],
+        "nonce": challenge["nonce"],
+        "mission_id": challenge["mission_id"],
+        "actor_type": challenge["actor_type"],
+    }
+    return jwt.encode(
+        claims,
+        private_key,
+        algorithm="RS256",
+        headers={"kid": challenge["key_id"], "typ": "onboard-auth+jwt"},
+    )
 
 
 def _onboard_token_service(bootstrap):
@@ -560,6 +663,233 @@ def test_onboard_expired_refresh_token_is_not_rotated():
             ).fetchone()[0] == 1
         finally:
             connection.close()
+
+
+def test_offline_authentication_proves_key_possession_and_issues_scoped_tokens():
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_offline_authentication=True,
+    )
+    with TestClient(app) as client:
+        missing_key = client.post(
+            "/api/v1/auth/challenges",
+            json={"subject": "user-02", "actor_type": "user"},
+        )
+        challenge_response = client.post(
+            "/api/v1/auth/challenges",
+            json={"subject": "user-01", "actor_type": "user"},
+        )
+        challenge = challenge_response.json()
+        proof = _authentication_proof(challenge)
+        invalid_proof = _authentication_proof(challenge, _PRIVATE_KEY)
+        wrong_key = client.post(
+            "/api/v1/auth/token",
+            json={
+                "challenge_id": challenge["challenge_id"],
+                "proof": invalid_proof,
+                "permissions": ["readings:read"],
+                "astronaut_ids": ["astronaut-01"],
+                "access_lifetime_seconds": 300,
+            },
+        )
+        excessive_claims = client.post(
+            "/api/v1/auth/token",
+            json={
+                "challenge_id": challenge["challenge_id"],
+                "proof": proof,
+                "permissions": ["admin:all"],
+                "astronaut_ids": ["astronaut-01"],
+                "access_lifetime_seconds": 300,
+            },
+        )
+        issued = client.post(
+            "/api/v1/auth/token",
+            json={
+                "challenge_id": challenge["challenge_id"],
+                "proof": proof,
+                "permissions": ["readings:read"],
+                "astronaut_ids": ["astronaut-01"],
+                "access_lifetime_seconds": 300,
+            },
+        )
+        replay = client.post(
+            "/api/v1/auth/token",
+            json={
+                "challenge_id": challenge["challenge_id"],
+                "proof": proof,
+                "permissions": ["readings:read"],
+                "astronaut_ids": ["astronaut-01"],
+                "access_lifetime_seconds": 300,
+            },
+        )
+        access_response = client.get(
+            "/api/v1/readings",
+            params={"astronaut_id": "astronaut-01"},
+            headers={"Authorization": f"Bearer {issued.json()['access_token']}"},
+        )
+        refreshed = client.post(
+            "/api/v1/auth/refresh",
+            json={
+                "refresh_token": issued.json()["refresh_token"],
+                "access_lifetime_seconds": 300,
+            },
+        )
+        revoked = client.post(
+            "/api/v1/auth/revoke",
+            json={"refresh_token": refreshed.json()["refresh_token"]},
+        )
+        revoked_access = client.get(
+            "/api/v1/readings",
+            params={"astronaut_id": "astronaut-01"},
+            headers={"Authorization": f"Bearer {refreshed.json()['access_token']}"},
+        )
+
+    assert missing_key.status_code == 401
+    assert challenge_response.status_code == 200
+    assert wrong_key.status_code == 401
+    assert excessive_claims.status_code == 403
+    assert issued.status_code == 200
+    assert replay.status_code == 401
+    assert access_response.status_code == 200
+    assert refreshed.status_code == 200
+    assert revoked.status_code == 200
+    assert revoked_access.status_code == 401
+
+
+def test_authentication_challenges_are_rate_limited_per_identity(monkeypatch):
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_offline_authentication=True,
+    )
+    monkeypatch.setenv("AUTH_CHALLENGE_RATE_LIMIT_MAX_REQUESTS", "2")
+    monkeypatch.setenv("AUTH_CHALLENGE_RATE_LIMIT_WINDOW_SECONDS", "60")
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/api/v1/auth/challenges",
+            json={"subject": "user-01", "actor_type": "user"},
+        )
+        second = client.post(
+            "/api/v1/auth/challenges",
+            json={"subject": "user-01", "actor_type": "user"},
+        )
+        limited = client.post(
+            "/api/v1/auth/challenges",
+            json={"subject": "user-01", "actor_type": "user"},
+        )
+
+        connection = connect_database()
+        try:
+            connection.execute(
+                """
+                UPDATE authentication_challenge_attempts
+                SET requested_at = ?
+                WHERE mission_id = ? AND subject = ? AND actor_type = ?
+                """,
+                (
+                    (datetime.now(timezone.utc) - timedelta(seconds=61)).isoformat(),
+                    _MISSION_ID,
+                    "user-01",
+                    "user",
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        after_window = client.post(
+            "/api/v1/auth/challenges",
+            json={"subject": "user-01", "actor_type": "user"},
+        )
+        connection = connect_database()
+        try:
+            attempt_count = connection.execute(
+                """
+                SELECT COUNT(*) FROM authentication_challenge_attempts
+                WHERE mission_id = ? AND subject = ? AND actor_type = ?
+                """,
+                (_MISSION_ID, "user-01", "user"),
+            ).fetchone()[0]
+        finally:
+            connection.close()
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert limited.status_code == 429
+    assert int(limited.headers["Retry-After"]) > 0
+    assert after_window.status_code == 200
+    assert attempt_count == 1
+
+
+def test_offline_authentication_startup_requires_rate_limit_configuration(
+    monkeypatch,
+):
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_offline_authentication=True,
+    )
+    monkeypatch.delenv("AUTH_CHALLENGE_RATE_LIMIT_MAX_REQUESTS")
+
+    with pytest.raises(RuntimeError, match="configuração de emissão.*rejeitada"):
+        with TestClient(app):
+            pass
+
+
+def test_offline_authentication_rejects_replayed_and_expired_challenges():
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_offline_authentication=True,
+    )
+    with TestClient(app) as client:
+        challenge_response = client.post(
+            "/api/v1/auth/challenges",
+            json={"subject": "user-01", "actor_type": "user"},
+        )
+        challenge = challenge_response.json()
+        connection = connect_database()
+        try:
+            connection.execute(
+                """
+                UPDATE authentication_challenges
+                SET expires_at = ?
+                WHERE challenge_id = ?
+                """,
+                (
+                    (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(),
+                    challenge["challenge_id"],
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        expired = client.post(
+            "/api/v1/auth/token",
+            json={
+                "challenge_id": challenge["challenge_id"],
+                "proof": _authentication_proof(challenge),
+                "permissions": ["readings:read"],
+                "astronaut_ids": ["astronaut-01"],
+                "access_lifetime_seconds": 300,
+            },
+        )
+
+    assert challenge_response.status_code == 200
+    assert expired.status_code == 401
+
+
+def test_offline_authentication_is_disabled_without_signing_key(monkeypatch):
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_offline_authentication=True,
+    )
+    monkeypatch.delenv("ONBOARD_TOKEN_SIGNING_KEY_PATH")
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/auth/challenges",
+            json={"subject": "user-01", "actor_type": "user"},
+        )
+
+    assert response.status_code == 503
 
 
 def _device_headers(device_id=_DEVICE_ID, astronaut_ids=None):
@@ -895,6 +1225,532 @@ def test_indicator_catalog_includes_blood_oxygen():
     assert oxygen["technical_validation_range"] == [0, 100]
 
 
+def test_readiness_requires_operational_bootstrap_and_database():
+    with TestClient(app) as client:
+        ready = client.get("/ready")
+        live = client.get("/health")
+        bootstrap = app.state.identity_bootstrap
+        app.state.identity_bootstrap = None
+        missing_bootstrap = client.get("/ready")
+        app.state.identity_bootstrap = bootstrap
+
+    assert ready.status_code == 200
+    assert ready.json() == {"status": "ready"}
+    assert live.status_code == 200
+    assert live.json() == {"status": "ok"}
+    assert missing_bootstrap.status_code == 503
+
+
+def test_readiness_reports_database_unavailable(monkeypatch):
+    def fail_connect():
+        raise sqlite3.OperationalError("database unavailable")
+
+    with TestClient(app) as client:
+        monkeypatch.setattr("app.main.connect_database", fail_connect)
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+
+
+def test_readiness_reports_missing_scientific_metadata_schema():
+    with TestClient(app) as client:
+        connection = connect_database()
+        try:
+            connection.execute("DROP TABLE nasa_osdr_study_metadata")
+            connection.commit()
+        finally:
+            connection.close()
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+
+
+def test_configured_monitoring_alerts_are_atomic_idempotent_and_scoped():
+    rules = (
+        MonitoringAlertRule(
+            rule_id="heart-rate-monitoring",
+            version=1,
+            metric=Metric.HEART_RATE,
+            minimum_value=55,
+            maximum_value=100,
+            rationale="Limites de monitorização definidos para o ensaio.",
+            source_reference="Protocolo de monitorização da missão, secção 4.",
+        ),
+    )
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        monitoring_alert_rules=rules,
+    )
+    start = datetime.now(timezone.utc) - timedelta(minutes=1)
+
+    with TestClient(app) as client:
+        for value in (54, 55, 100, 101):
+            response = client.post(
+                "/api/v1/readings",
+                json={
+                    "astronaut_id": "astronaut-01",
+                    "measured_at": datetime.now(timezone.utc).isoformat(),
+                    "measurements": [{"metric": "heart_rate", "value": value}],
+                },
+                headers=_authorization_headers(),
+            )
+            assert response.status_code == 201
+
+        offline_reading_id = "f59b83f0-56a8-47f3-874d-ed940f65d346"
+        batch = {
+            "batch_id": "c54d86ca-59f9-41b6-9dbb-f18b3976fc31",
+            "source_device_id": _DEVICE_ID,
+            "readings": [
+                {
+                    "astronaut_id": "astronaut-01",
+                    "measured_at": datetime.now(timezone.utc).isoformat(),
+                    "measurements": [
+                        {
+                            "reading_id": offline_reading_id,
+                            "sequence_number": 1,
+                            "metric": "heart_rate",
+                            "value": 40,
+                        }
+                    ],
+                }
+            ],
+        }
+        first_sync = client.post(
+            "/api/v1/sync/readings",
+            json=batch,
+            headers=_device_headers(),
+        )
+        replay = client.post(
+            "/api/v1/sync/readings",
+            json={
+                **batch,
+                "batch_id": "825ee45b-90cd-4bd0-9e45-e457445b5c78",
+            },
+            headers=_device_headers(),
+        )
+        alerts = client.get(
+            "/api/v1/alerts",
+            params={
+                "astronaut_id": "astronaut-01",
+                "start": start.isoformat(),
+                "end": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+            },
+            headers=_authorization_headers(),
+        )
+        out_of_scope = client.get(
+            "/api/v1/alerts",
+            params={
+                "astronaut_id": "astronaut-01",
+                "start": start.isoformat(),
+                "end": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+            },
+            headers=_authorization_headers(astronaut_ids=["astronaut-02"]),
+        )
+        device_access = client.get(
+            "/api/v1/alerts",
+            params={
+                "astronaut_id": "astronaut-01",
+                "start": start.isoformat(),
+                "end": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+            },
+            headers=_device_headers(),
+        )
+
+    assert first_sync.status_code == 200
+    assert replay.status_code == 200
+    assert replay.json()["items"][0]["status"] == "already_received"
+    assert alerts.status_code == 200
+    assert alerts.json()["total"] == 3
+    assert len(alerts.json()["items"]) == 3
+    assert out_of_scope.status_code == 403
+    assert device_access.status_code == 403
+    alert_directions = {
+        (alert["direction"], alert["configured_limit"])
+        for alert in alerts.json()["items"]
+    }
+    assert alert_directions == {("below_minimum", 55), ("above_maximum", 100)}
+    assert all(
+        alert["source_reference"] == "Protocolo de monitorização da missão, secção 4."
+        and alert["interpretation"] == "monitoring_support_not_diagnosis"
+        for alert in alerts.json()["items"]
+    )
+
+
+def test_monitoring_alerts_are_empty_without_rules():
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/alerts",
+            params={
+                "astronaut_id": "astronaut-01",
+                "start": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+                "end": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+            },
+            headers=_authorization_headers(),
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "total": 0}
+
+
+def test_monitoring_alert_persistence_failure_rolls_back_reading():
+    rules = (
+        MonitoringAlertRule(
+            rule_id="heart-rate-minimum",
+            version=1,
+            metric=Metric.HEART_RATE,
+            minimum_value=55,
+            rationale="Limite de monitorização do teste.",
+            source_reference="Protocolo de teste.",
+        ),
+    )
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        monitoring_alert_rules=rules,
+    )
+    reading_id = "12a2452f-4de5-43eb-b42a-a88723b9df88"
+
+    with TestClient(app) as client:
+        connection = connect_database()
+        try:
+            connection.execute(
+                """
+                CREATE TRIGGER reject_monitoring_alert
+                BEFORE INSERT ON monitoring_alerts
+                BEGIN
+                    SELECT RAISE(ABORT, 'alert persistence unavailable');
+                END
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        response = client.post(
+            "/api/v1/readings",
+            json={
+                "astronaut_id": "astronaut-01",
+                "measured_at": datetime.now(timezone.utc).isoformat(),
+                "measurements": [
+                    {
+                        "reading_id": reading_id,
+                        "metric": "heart_rate",
+                        "value": 40,
+                    }
+                ],
+            },
+            headers=_authorization_headers(),
+        )
+        connection = connect_database()
+        try:
+            stored_reading_count = connection.execute(
+                "SELECT COUNT(*) FROM health_readings WHERE reading_id = ?",
+                (reading_id,),
+            ).fetchone()[0]
+            stored_alert_count = connection.execute(
+                "SELECT COUNT(*) FROM monitoring_alerts WHERE reading_id = ?",
+                (reading_id,),
+            ).fetchone()[0]
+        finally:
+            connection.close()
+
+    assert response.status_code == 500
+    assert stored_reading_count == 0
+    assert stored_alert_count == 0
+
+
+def test_alert_acknowledgement_is_permissioned_scoped_and_idempotent():
+    rules = (
+        MonitoringAlertRule(
+            rule_id="heart-rate-minimum",
+            version=1,
+            metric=Metric.HEART_RATE,
+            minimum_value=55,
+            rationale="Limite de monitorização do teste.",
+            source_reference="Protocolo de teste.",
+        ),
+    )
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        monitoring_alert_rules=rules,
+        enable_alert_acknowledgement=True,
+    )
+    ack_headers = _authorization_headers(
+        permissions=["readings:read", "alerts:acknowledge"],
+    )
+
+    with TestClient(app) as client:
+        reading = client.post(
+            "/api/v1/readings",
+            json={
+                "astronaut_id": "astronaut-01",
+                "measured_at": datetime.now(timezone.utc).isoformat(),
+                "measurements": [{"metric": "heart_rate", "value": 40}],
+            },
+            headers=_authorization_headers(),
+        )
+        alert_query = {
+            "astronaut_id": "astronaut-01",
+            "start": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+            "end": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+        }
+        alerts_before = client.get(
+            "/api/v1/alerts",
+            params=alert_query,
+            headers=_authorization_headers(),
+        )
+        alert_id = alerts_before.json()["items"][0]["alert_id"]
+        missing_permission = client.post(
+            f"/api/v1/alerts/{alert_id}/acknowledge",
+            headers=_authorization_headers(),
+        )
+        out_of_scope = client.post(
+            f"/api/v1/alerts/{alert_id}/acknowledge",
+            headers=_authorization_headers(
+                astronaut_ids=["astronaut-02"],
+                permissions=["readings:read", "alerts:acknowledge"],
+            ),
+        )
+        acknowledged = client.post(
+            f"/api/v1/alerts/{alert_id}/acknowledge",
+            headers=ack_headers,
+        )
+        repeated_acknowledgement = client.post(
+            f"/api/v1/alerts/{alert_id}/acknowledge",
+            headers=ack_headers,
+        )
+        alerts_after = client.get(
+            "/api/v1/alerts",
+            params=alert_query,
+            headers=ack_headers,
+        )
+        unknown_alert = client.post(
+            "/api/v1/alerts/999/acknowledge",
+            headers=ack_headers,
+        )
+
+    assert reading.status_code == 201
+    assert alerts_before.status_code == 200
+    assert alerts_before.json()["items"][0]["acknowledgement_count"] == 0
+    assert alerts_before.json()["items"][0]["acknowledged_by_current_user"] is False
+    assert missing_permission.status_code == 403
+    assert out_of_scope.status_code == 403
+    assert acknowledged.status_code == 200
+    assert repeated_acknowledgement.status_code == 200
+    assert acknowledged.json() == repeated_acknowledgement.json()
+    assert acknowledged.json()["status"] == "acknowledged"
+    assert alerts_after.json()["items"][0]["acknowledgement_count"] == 1
+    assert alerts_after.json()["items"][0]["acknowledged_by_current_user"] is True
+    assert unknown_alert.status_code == 404
+
+
+def test_alert_rule_management_is_delegated_versioned_audited_and_persistent():
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_alert_configuration=True,
+    )
+    admin_headers = _authorization_headers(
+        astronaut_ids=["astronaut-01", "astronaut-02"],
+        permissions=["readings:read", "alerts:configure"],
+    )
+    rule_body = {
+        "expected_version": 0,
+        "metric": "heart_rate",
+        "minimum_value": 55,
+        "maximum_value": None,
+        "rationale": "Limite configurado pela equipa autorizada.",
+        "source_reference": "Protocolo de monitorização da missão, secção 4.",
+    }
+
+    with TestClient(app) as client:
+        no_permission = client.get(
+            "/api/v1/alerts/rules",
+            headers=_authorization_headers(
+                astronaut_ids=["astronaut-01", "astronaut-02"],
+            ),
+        )
+        partial_scope = client.get(
+            "/api/v1/alerts/rules",
+            headers=_authorization_headers(
+                permissions=["readings:read", "alerts:configure"],
+            ),
+        )
+        created = client.put(
+            "/api/v1/alerts/rules/heart-rate-check",
+            json=rule_body,
+            headers=admin_headers,
+        )
+        stale_update = client.put(
+            "/api/v1/alerts/rules/heart-rate-check",
+            json=rule_body,
+            headers=admin_headers,
+        )
+        updated = client.put(
+            "/api/v1/alerts/rules/heart-rate-check",
+            json={
+                **rule_body,
+                "expected_version": 1,
+                "minimum_value": 60,
+            },
+            headers=admin_headers,
+        )
+        deactivated = client.post(
+            "/api/v1/alerts/rules/heart-rate-check/deactivate",
+            json={"expected_version": 2},
+            headers=admin_headers,
+        )
+        inactive_reading = client.post(
+            "/api/v1/readings",
+            json={
+                "astronaut_id": "astronaut-01",
+                "measured_at": datetime.now(timezone.utc).isoformat(),
+                "measurements": [{"metric": "heart_rate", "value": 40}],
+            },
+            headers=_authorization_headers(),
+        )
+        reactivated = client.put(
+            "/api/v1/alerts/rules/heart-rate-check",
+            json={
+                **rule_body,
+                "expected_version": 3,
+                "minimum_value": 50,
+            },
+            headers=admin_headers,
+        )
+        active_reading = client.post(
+            "/api/v1/readings",
+            json={
+                "astronaut_id": "astronaut-01",
+                "measured_at": datetime.now(timezone.utc).isoformat(),
+                "measurements": [{"metric": "heart_rate", "value": 40}],
+            },
+            headers=_authorization_headers(),
+        )
+        alerts = client.get(
+            "/api/v1/alerts",
+            params={
+                "astronaut_id": "astronaut-01",
+                "start": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+                "end": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+            },
+            headers=_authorization_headers(),
+        )
+        audit = client.get(
+            "/api/v1/alerts/rules/audit",
+            headers=admin_headers,
+        )
+
+    assert no_permission.status_code == 403
+    assert partial_scope.status_code == 403
+    assert created.status_code == 200
+    assert created.json()["rule"]["version"] == 1
+    assert stale_update.status_code == 409
+    assert updated.status_code == 200
+    assert updated.json()["rule"]["version"] == 2
+    assert deactivated.status_code == 200
+    assert deactivated.json()["rule"]["version"] == 3
+    assert deactivated.json()["active"] is False
+    assert inactive_reading.status_code == 201
+    assert reactivated.status_code == 200
+    assert reactivated.json()["rule"]["version"] == 4
+    assert reactivated.json()["active"] is True
+    assert active_reading.status_code == 201
+    assert alerts.status_code == 200
+    assert alerts.json()["total"] == 1
+    assert audit.status_code == 200
+    assert [
+        item["action"] for item in reversed(audit.json()["items"])
+    ] == ["created", "updated", "deactivated", "reactivated"]
+    assert all(item["actor_id"] == "user-01" for item in audit.json()["items"])
+
+    with TestClient(app) as restarted_client:
+        persisted_rules = restarted_client.get(
+            "/api/v1/alerts/rules",
+            headers=admin_headers,
+        )
+        persisted_audit = restarted_client.get(
+            "/api/v1/alerts/rules/audit",
+            headers=admin_headers,
+        )
+
+    assert persisted_rules.status_code == 200
+    assert persisted_rules.json()["items"][0]["rule"]["version"] == 4
+    assert persisted_rules.json()["items"][0]["active"] is True
+    assert persisted_audit.json()["total"] == 4
+
+
+def test_alert_rule_update_rolls_back_if_audit_record_cannot_be_written():
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_alert_configuration=True,
+    )
+    headers = _authorization_headers(
+        astronaut_ids=["astronaut-01", "astronaut-02"],
+        permissions=["readings:read", "alerts:configure"],
+    )
+    with TestClient(app) as client:
+        connection = connect_database()
+        try:
+            connection.execute(
+                """
+                CREATE TRIGGER reject_alert_rule_audit
+                BEFORE INSERT ON monitoring_alert_rule_changes
+                BEGIN
+                    SELECT RAISE(ABORT, 'rule audit unavailable');
+                END
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        response = client.put(
+            "/api/v1/alerts/rules/heart-rate-check",
+            json={
+                "expected_version": 0,
+                "metric": "heart_rate",
+                "minimum_value": 55,
+                "rationale": "Limite do teste.",
+                "source_reference": "Protocolo de teste.",
+            },
+            headers=headers,
+        )
+        connection = connect_database()
+        try:
+            rule_count = connection.execute(
+                "SELECT COUNT(*) FROM monitoring_alert_rules"
+            ).fetchone()[0]
+            audit_count = connection.execute(
+                "SELECT COUNT(*) FROM monitoring_alert_rule_changes"
+            ).fetchone()[0]
+        finally:
+            connection.close()
+
+    assert response.status_code == 500
+    assert rule_count == 0
+    assert audit_count == 0
+
+
+def test_monitoring_alert_rules_require_valid_configured_limits():
+    with pytest.raises(ValueError):
+        MonitoringAlertRule(
+            rule_id="empty",
+            version=1,
+            metric=Metric.HEART_RATE,
+            rationale="Teste",
+            source_reference="Protocolo de teste.",
+        )
+    with pytest.raises(ValueError):
+        MonitoringAlertRule(
+            rule_id="invalid",
+            version=1,
+            metric=Metric.HEART_RATE,
+            minimum_value=110,
+            maximum_value=100,
+            rationale="Teste",
+            source_reference="Protocolo de teste.",
+        )
+
+
 def test_rejects_invalid_values_and_blood_pressure(tmp_path, monkeypatch):
     monkeypatch.setenv("HEALTH_DB_PATH", str(tmp_path / "health.sqlite3"))
     with TestClient(app) as client:
@@ -1141,18 +1997,221 @@ def test_database_initialization_migrates_existing_readings(tmp_path, monkeypatc
         columns = {row[1] for row in connection.execute("PRAGMA table_info(health_readings)")}
         row = connection.execute(
             "SELECT astronaut_id, metric, value, reading_id, source_device_id, sequence_number "
-            "FROM health_readings"
+            ", earth_sync_eligible FROM health_readings"
         ).fetchone()
+        batch_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(sync_batches)")
+        }
         batch_tables = {
             row[0]
             for row in connection.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             )
         }
+        outbox_count = connection.execute(
+            "SELECT COUNT(*) FROM earth_outbound_batches"
+        ).fetchone()[0]
 
     assert {"reading_id", "source_device_id", "sequence_number"} <= columns
-    assert row == ("astronaut-01", "heart_rate", 72.0, None, None, None)
+    assert "earth_sync_eligible" in columns
+    assert row == ("astronaut-01", "heart_rate", 72.0, None, None, None, 0)
+    assert "protocol_version" in batch_columns
     assert {"sync_batches", "sync_batch_items"} <= batch_tables
+    assert {"earth_outbound_batches", "earth_outbound_batch_items"} <= batch_tables
+    assert outbox_count == 0
+
+
+def _earth_sync_batch(*, eligible=True):
+    return {
+        "batch_id": "c228f603-1b3f-4f34-a5f1-d8d9f531a101",
+        "source_device_id": "99d52a98-95e3-48ae-a0c2-24d888d1183f",
+        "readings": [
+            {
+                "astronaut_id": "astronaut-01",
+                "measured_at": "2026-11-14T16:00:00Z",
+                "measurements": [
+                    {
+                        "reading_id": "54d64069-2f8d-4ed8-8540-634b07b0d020",
+                        "metric": "heart_rate",
+                        "value": 72,
+                        "sequence_number": 31,
+                        "earth_sync_eligible": eligible,
+                    },
+                    {
+                        "reading_id": "0926eed4-7895-4c45-8b5a-84708f292011",
+                        "metric": "mood",
+                        "value": 4,
+                        "sequence_number": 32,
+                        "earth_sync_eligible": False,
+                    },
+                ],
+            }
+        ],
+    }
+
+
+def test_v2_sync_atomically_enqueues_only_explicitly_eligible_new_readings(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HEALTH_DB_PATH", str(tmp_path / "health.sqlite3"))
+    monkeypatch.setenv("EARTH_SERVICE_ID", "ground-health-service-001")
+    batch = _earth_sync_batch()
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v2/sync/readings",
+            json=batch,
+            headers=_device_headers(),
+        )
+        replay = client.post(
+            "/api/v2/sync/readings",
+            json=batch,
+            headers=_device_headers(),
+        )
+
+    assert response.status_code == 200
+    assert response.json()["onboard_status"] == "persisted"
+    assert response.json()["earth_delivery_status"] == "pending"
+    assert response.json()["delivery_batch_id"]
+    assert replay.status_code == 200
+    assert replay.json() == response.json()
+
+    connection = connect_database()
+    try:
+        readings = connection.execute(
+            """
+            SELECT reading_id, earth_sync_eligible
+            FROM health_readings
+            ORDER BY sequence_number
+            """
+        ).fetchall()
+        outbound = connection.execute(
+            "SELECT * FROM earth_outbound_batches"
+        ).fetchone()
+        outbound_items = connection.execute(
+            "SELECT * FROM earth_outbound_batch_items"
+        ).fetchall()
+        inbound = connection.execute(
+            "SELECT protocol_version FROM sync_batches WHERE batch_id = ?",
+            (batch["batch_id"],),
+        ).fetchone()
+    finally:
+        connection.close()
+
+    assert [(row["reading_id"], row["earth_sync_eligible"]) for row in readings] == [
+        ("54d64069-2f8d-4ed8-8540-634b07b0d020", 1),
+        ("0926eed4-7895-4c45-8b5a-84708f292011", 0),
+    ]
+    assert inbound["protocol_version"] == 2
+    assert outbound["status"] == "pending"
+    assert outbound["source_service_id"] == _ISSUER
+    assert outbound["destination_service_id"] == "ground-health-service-001"
+    assert outbound["delivery_batch_id"] == response.json()["delivery_batch_id"]
+    assert hashlib.sha256(outbound["payload_json"].encode()).hexdigest() == (
+        outbound["payload_sha256"]
+    )
+    assert len(outbound_items) == 1
+    assert outbound_items[0]["reading_id"] == "54d64069-2f8d-4ed8-8540-634b07b0d020"
+
+
+def test_v2_sync_requires_explicit_eligibility_and_destination_configuration(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HEALTH_DB_PATH", str(tmp_path / "health.sqlite3"))
+    monkeypatch.delenv("EARTH_SERVICE_ID", raising=False)
+    batch = _earth_sync_batch()
+    with TestClient(app) as client:
+        missing_flag = json.loads(json.dumps(batch))
+        del missing_flag["readings"][0]["measurements"][0]["earth_sync_eligible"]
+        invalid = client.post(
+            "/api/v2/sync/readings",
+            json=missing_flag,
+            headers=_device_headers(),
+        )
+        missing_destination = client.post(
+            "/api/v2/sync/readings",
+            json=batch,
+            headers=_device_headers(),
+        )
+
+    assert invalid.status_code == 422
+    assert missing_destination.status_code == 503
+    connection = connect_database()
+    try:
+        assert connection.execute("SELECT COUNT(*) FROM health_readings").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM sync_batches").fetchone()[0] == 0
+    finally:
+        connection.close()
+
+
+def test_v2_sync_without_eligible_items_stays_local_without_earth_configuration(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HEALTH_DB_PATH", str(tmp_path / "health.sqlite3"))
+    monkeypatch.delenv("EARTH_SERVICE_ID", raising=False)
+    batch = _earth_sync_batch(eligible=False)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v2/sync/readings",
+            json=batch,
+            headers=_device_headers(),
+        )
+
+    assert response.status_code == 200
+    assert response.json()["onboard_status"] == "persisted"
+    assert response.json()["earth_delivery_status"] == "not_requested"
+    assert response.json()["delivery_batch_id"] is None
+    connection = connect_database()
+    try:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM earth_outbound_batches"
+        ).fetchone()[0] == 0
+    finally:
+        connection.close()
+
+
+def test_v2_outbox_failure_rolls_back_readings_and_inbound_receipt(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HEALTH_DB_PATH", str(tmp_path / "health.sqlite3"))
+    monkeypatch.setenv("EARTH_SERVICE_ID", "ground-health-service-001")
+    initialize_database()
+    connection = connect_database()
+    try:
+        connection.execute(
+            """
+            CREATE TRIGGER reject_outbox_item
+            BEFORE INSERT ON earth_outbound_batch_items
+            BEGIN
+                SELECT RAISE(ABORT, 'simulated outbox storage failure');
+            END
+            """
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v2/sync/readings",
+            json=_earth_sync_batch(),
+            headers=_device_headers(),
+        )
+
+    assert response.status_code == 500
+    connection = connect_database()
+    try:
+        assert connection.execute("SELECT COUNT(*) FROM health_readings").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM sync_batches").fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM earth_outbound_batches"
+        ).fetchone()[0] == 0
+    finally:
+        connection.close()
 
 
 def test_offline_sync_requires_stable_ids_and_unique_sequences(tmp_path, monkeypatch):
@@ -1629,5 +2688,552 @@ def test_openapi_declares_bearer_authentication_for_protected_routes():
     assert "HTTPBearer" in schema["components"]["securitySchemes"]
     assert schema["paths"]["/api/v1/readings"]["get"]["security"]
     assert schema["paths"]["/api/v1/sync/readings"]["post"]["security"]
+    assert schema["paths"]["/api/v2/sync/readings"]["post"]["security"]
     assert schema["paths"]["/api/v1/sync/batches/{batch_id}"]["get"]["security"]
+    assert "security" not in schema["paths"]["/api/v1/auth/challenges"]["post"]
+    assert "security" not in schema["paths"]["/api/v1/auth/token"]["post"]
+    assert "security" not in schema["paths"]["/api/v1/auth/refresh"]["post"]
+    assert "security" not in schema["paths"]["/api/v1/auth/revoke"]["post"]
+    assert schema["paths"]["/api/v1/alerts/{alert_id}/acknowledge"]["post"]["security"]
+    assert schema["paths"]["/api/v1/alerts/rules"]["get"]["security"]
+    assert schema["paths"]["/api/v1/alerts/rules/{rule_id}"]["put"]["security"]
+    assert schema["paths"]["/api/v1/alerts/rules/{rule_id}/deactivate"]["post"]["security"]
+    assert schema["paths"]["/api/v1/alerts/rules/audit"]["get"]["security"]
+    assert schema["paths"][
+        "/api/v1/scientific-data/osdr/studies/{accession}"
+    ]["get"]["security"]
+    assert schema["paths"][
+        "/api/v1/scientific-data/osdr/studies/{accession}/refresh"
+    ]["post"]["security"]
+    assert schema["paths"]["/api/v1/scientific-data/osdr/search"]["get"]["security"]
+    assert schema["paths"][
+        "/api/v1/scientific-data/osdr/search/refresh"
+    ]["post"]["security"]
+    assert schema["paths"][
+        "/api/v1/scientific-data/osdr/studies/{accession}/files"
+    ]["get"]["security"]
+    assert schema["paths"][
+        "/api/v1/scientific-data/osdr/studies/{accession}/files/refresh"
+    ]["post"]["security"]
+    assert schema["paths"][
+        "/api/v1/scientific-data/osdr/studies/{accession}/files/{file_name}/imports"
+    ]["post"]["security"]
+    assert schema["paths"][
+        "/api/v1/scientific-data/osdr/imports"
+    ]["get"]["security"]
     assert "security" not in schema["paths"]["/health"]["get"]
+
+
+def _osdr_metadata() -> OSDRStudyMetadata:
+    return OSDRStudyMetadata(
+        accession="OSD-575",
+        title="SpaceX Inspiration4 Blood Serum Metabolic Panel",
+        project_identifier="Inspiration4 Crew",
+        mission_name="SpaceX Inspiration4",
+        mission_start_date=datetime(2021, 9, 16).date(),
+        mission_end_date=datetime(2021, 9, 18).date(),
+        material_type="Serum",
+        identifiers=("LSDS-8", "GLDS-579"),
+        assay_technology_types=("Multiplex", "Comprehensive Metabolic Panel"),
+        assay_platforms=("Eve Technologies Panel HDCVD9", "Quest Diagnostics"),
+        source_api_url=(
+            "https://visualization.osdr.nasa.gov/biodata/api/v2/dataset/OSD-575/"
+        ),
+        study_url="https://osdr.nasa.gov/bio/repo/data/studies/OSD-575",
+        citation="NASA OSDR, OSD-575: SpaceX Inspiration4 Blood Serum Metabolic Panel.",
+        retrieved_at=datetime.now(timezone.utc),
+    )
+
+
+def test_scientific_metadata_requires_explicit_read_permission():
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/scientific-data/osdr/studies/OSD-575",
+            headers=_authorization_headers(permissions=["readings:read"]),
+        )
+
+    assert response.status_code == 403
+
+
+def test_osdr_metadata_refresh_is_cached_and_readable_offline(monkeypatch):
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_scientific_data=True,
+    )
+    metadata = _osdr_metadata()
+    monkeypatch.setattr(
+        "app.main.fetch_osdr_study_metadata",
+        lambda _accession: metadata,
+    )
+    with TestClient(app) as client:
+        refreshed = client.post(
+            "/api/v1/scientific-data/osdr/studies/OSD-575/refresh",
+            headers=_authorization_headers(
+                permissions=["scientific-data:sync"]
+            ),
+        )
+        monkeypatch.setattr(
+            "app.main.fetch_osdr_study_metadata",
+            lambda _accession: (_ for _ in ()).throw(AssertionError("network call")),
+        )
+        cached = client.get(
+            "/api/v1/scientific-data/osdr/studies/OSD-575",
+            headers=_authorization_headers(
+                permissions=["scientific-data:read"]
+            ),
+        )
+
+    assert refreshed.status_code == 200
+    assert cached.status_code == 200
+    assert cached.json()["accession"] == "OSD-575"
+    assert cached.json()["identifiers"] == ["LSDS-8", "GLDS-579"]
+    assert cached.json()["license_status"] == "not_verified"
+    assert cached.json()["files_downloaded"] is False
+
+
+def test_osdr_refresh_failure_does_not_create_cache_entry(monkeypatch):
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_scientific_data=True,
+    )
+
+    def fail_refresh(_accession):
+        raise OSDRMetadataError("NASA OSDR unavailable")
+
+    monkeypatch.setattr("app.main.fetch_osdr_study_metadata", fail_refresh)
+    with TestClient(app) as client:
+        refreshed = client.post(
+            "/api/v1/scientific-data/osdr/studies/OSD-575/refresh",
+            headers=_authorization_headers(
+                permissions=["scientific-data:sync"]
+            ),
+        )
+        cached = client.get(
+            "/api/v1/scientific-data/osdr/studies/OSD-575",
+            headers=_authorization_headers(
+                permissions=["scientific-data:read"]
+            ),
+        )
+
+    assert refreshed.status_code == 502
+    assert cached.status_code == 404
+
+
+def _osdr_dataset_file(*, restricted=None, file_size_bytes=56):
+    return OSDRDatasetFile(
+        accession="OSD-575",
+        file_name="test-transformed.csv",
+        file_format="csv",
+        source_api_url=(
+            "https://visualization.osdr.nasa.gov/biodata/api/v2/"
+            "dataset/OSD-575/file/test-transformed.csv/"
+        ),
+        download_url=(
+            "https://osdr.nasa.gov/geode-py/ws/studies/OSD-575/"
+            "download?source=datamanager&file=test-transformed.csv"
+        ),
+        file_size_bytes=file_size_bytes,
+        restricted=restricted,
+        remote_updated_at=None,
+        retrieved_at=datetime.now(timezone.utc),
+    )
+
+
+def test_osdr_search_is_cached_for_offline_discovery(monkeypatch):
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_scientific_data=True,
+    )
+    hits = (
+        OSDRDatasetSearchHit(
+            accession="OSD-575",
+            organism="Homo sapiens",
+            spaceflight_phase="Space Flight",
+        ),
+    )
+    monkeypatch.setattr("app.main.search_osdr_datasets", lambda **_filters: hits)
+
+    with TestClient(app) as client:
+        refreshed = client.post(
+            "/api/v1/scientific-data/osdr/search/refresh",
+            params={"organism": "Homo sapiens"},
+            headers=_authorization_headers(
+                permissions=["scientific-data:sync"]
+            ),
+        )
+        monkeypatch.setattr(
+            "app.main.search_osdr_datasets",
+            lambda **_filters: (_ for _ in ()).throw(AssertionError("network call")),
+        )
+        cached = client.get(
+            "/api/v1/scientific-data/osdr/search",
+            params={"organism": "Homo sapiens"},
+            headers=_authorization_headers(
+                permissions=["scientific-data:read"]
+            ),
+        )
+
+    assert refreshed.status_code == 200
+    assert cached.status_code == 200
+    assert cached.json()["items"][0]["accession"] == "OSD-575"
+    assert cached.json()["filters"] == {"organism": "Homo sapiens"}
+    assert cached.json()["retrieved_at"] == refreshed.json()["retrieved_at"]
+
+
+def test_osdr_search_requires_filter_and_permissions():
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_scientific_data=True,
+    )
+    with TestClient(app) as client:
+        no_filter = client.post(
+            "/api/v1/scientific-data/osdr/search/refresh",
+            headers=_authorization_headers(
+                permissions=["scientific-data:sync"]
+            ),
+        )
+        no_permission = client.get(
+            "/api/v1/scientific-data/osdr/search",
+            params={"organism": "Homo sapiens"},
+            headers=_authorization_headers(),
+        )
+
+    assert no_filter.status_code == 422
+    assert no_permission.status_code == 403
+
+
+def test_osdr_file_inventory_is_cached_for_offline_reads(monkeypatch):
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_scientific_data=True,
+    )
+    dataset_file = _osdr_dataset_file()
+    monkeypatch.setattr(
+        "app.main.fetch_osdr_dataset_files",
+        lambda _accession: (dataset_file,),
+    )
+
+    with TestClient(app) as client:
+        refreshed = client.post(
+            "/api/v1/scientific-data/osdr/studies/OSD-575/files/refresh",
+            headers=_authorization_headers(
+                permissions=["scientific-data:sync"]
+            ),
+        )
+        monkeypatch.setattr(
+            "app.main.fetch_osdr_dataset_files",
+            lambda _accession: (_ for _ in ()).throw(AssertionError("network call")),
+        )
+        cached = client.get(
+            "/api/v1/scientific-data/osdr/studies/OSD-575/files",
+            headers=_authorization_headers(
+                permissions=["scientific-data:read"]
+            ),
+        )
+
+    assert refreshed.status_code == 200
+    assert cached.status_code == 200
+    assert cached.json()[0]["file_name"] == "test-transformed.csv"
+    assert cached.json()[0]["restricted"] is None
+
+
+def test_osdr_csv_import_preserves_source_and_is_idempotent(monkeypatch):
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_scientific_data=True,
+    )
+    content = b"sample_code,albumin_value_gram_per_deciliter\nS1,4.2\nS2,4.1\n"
+    dataset_file = _osdr_dataset_file(file_size_bytes=len(content), restricted=False)
+    monkeypatch.setenv("NASA_OSDR_IMPORT_MAX_BYTES", str(len(content)))
+    monkeypatch.setattr(
+        "app.main.fetch_osdr_study_metadata",
+        lambda _accession: _osdr_metadata(),
+    )
+    monkeypatch.setattr(
+        "app.main.fetch_osdr_dataset_file_metadata",
+        lambda _accession, _file_name: (
+            dataset_file,
+            {
+                "file_name": dataset_file.file_name,
+                "restricted": False,
+                "file_size": len(content),
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        "app.main.download_osdr_csv",
+        lambda _file, *, max_bytes: content,
+    )
+    import_headers = _authorization_headers(
+        permissions=["scientific-data:import"]
+    )
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/api/v1/scientific-data/osdr/studies/OSD-575/"
+            "files/test-transformed.csv/imports",
+            headers=import_headers,
+        )
+        replay = client.post(
+            "/api/v1/scientific-data/osdr/studies/OSD-575/"
+            "files/test-transformed.csv/imports",
+            headers=import_headers,
+        )
+        assert first.status_code == 200
+        imported_id = first.json()["import_id"]
+        details = client.get(
+            f"/api/v1/scientific-data/osdr/imports/{imported_id}",
+            headers=_authorization_headers(
+                permissions=["scientific-data:read"]
+            ),
+        )
+        records = client.get(
+            f"/api/v1/scientific-data/osdr/imports/{imported_id}/records",
+            params={"limit": 1},
+            headers=_authorization_headers(
+                permissions=["scientific-data:read"]
+            ),
+        )
+        listing = client.get(
+            "/api/v1/scientific-data/osdr/imports",
+            params={"accession": "OSD-575"},
+            headers=_authorization_headers(
+                permissions=["scientific-data:read"]
+            ),
+        )
+        refreshed_metadata = client.post(
+            "/api/v1/scientific-data/osdr/studies/OSD-575/refresh",
+            headers=_authorization_headers(
+                permissions=["scientific-data:sync"]
+            ),
+        )
+        cached_metadata = client.get(
+            "/api/v1/scientific-data/osdr/studies/OSD-575",
+            headers=_authorization_headers(
+                permissions=["scientific-data:read"]
+            ),
+        )
+
+    assert first.status_code == 200
+    assert replay.status_code == 200
+    assert first.json()["import_id"] == replay.json()["import_id"]
+    assert first.json()["provenance"] == "nasa_osdr"
+    assert first.json()["license_status"] == "not_verified"
+    assert first.json()["normalization_status"] == "not_performed"
+    assert first.json()["file_sha256"] == hashlib.sha256(content).hexdigest()
+    assert details.status_code == 200
+    assert records.status_code == 200
+    assert records.json()["items"][0]["origin"] == "nasa"
+    assert records.json()["items"][0]["source_values"] == {
+        "sample_code": "S1",
+        "albumin_value_gram_per_deciliter": "4.2",
+    }
+    assert records.json()["total"] == 2
+    assert listing.status_code == 200
+    assert listing.json()["total"] == 1
+    assert refreshed_metadata.status_code == 200
+    assert refreshed_metadata.json()["files_downloaded"] is True
+    assert cached_metadata.status_code == 200
+    assert cached_metadata.json()["files_downloaded"] is True
+
+    connection = connect_database()
+    try:
+        stored = connection.execute(
+            """
+            SELECT original_content, record_count
+            FROM nasa_osdr_dataset_imports
+            """
+        ).fetchone()
+        reading_count = connection.execute(
+            "SELECT COUNT(*) FROM health_readings"
+        ).fetchone()[0]
+        row_count = connection.execute(
+            "SELECT COUNT(*) FROM nasa_osdr_dataset_import_rows"
+        ).fetchone()[0]
+        transformation = connection.execute(
+            """
+            SELECT operation, details_json
+            FROM nasa_osdr_import_transformations
+            """
+        ).fetchone()
+    finally:
+        connection.close()
+
+    assert bytes(stored["original_content"]) == content
+    assert stored["record_count"] == 2
+    assert reading_count == 0
+    assert row_count == 2
+    assert transformation["operation"] == "csv_parse_preserving_source_values"
+    assert "not_performed" in transformation["details_json"]
+
+
+def test_osdr_import_requires_explicit_import_permission():
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_scientific_data=True,
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/scientific-data/osdr/studies/OSD-575/"
+            "files/test-transformed.csv/imports",
+            headers=_authorization_headers(
+                permissions=["scientific-data:sync"]
+            ),
+        )
+
+    assert response.status_code == 403
+
+
+def test_osdr_import_rejects_restricted_file_without_persisting(monkeypatch):
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_scientific_data=True,
+    )
+    content = b"sample,value\nS1,1\n"
+    dataset_file = _osdr_dataset_file(file_size_bytes=len(content), restricted=True)
+    monkeypatch.setenv("NASA_OSDR_IMPORT_MAX_BYTES", str(len(content)))
+    monkeypatch.setattr(
+        "app.main.fetch_osdr_study_metadata",
+        lambda _accession: _osdr_metadata(),
+    )
+    monkeypatch.setattr(
+        "app.main.fetch_osdr_dataset_file_metadata",
+        lambda _accession, _file_name: (dataset_file, {"restricted": True}),
+    )
+    monkeypatch.setattr(
+        "app.main.download_osdr_csv",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("restricted download attempted")
+        ),
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/scientific-data/osdr/studies/OSD-575/"
+            "files/test-transformed.csv/imports",
+            headers=_authorization_headers(
+                permissions=["scientific-data:import"]
+            ),
+        )
+
+    assert response.status_code == 403
+    connection = connect_database()
+    try:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM nasa_osdr_dataset_imports"
+        ).fetchone()[0] == 0
+    finally:
+        connection.close()
+
+
+def test_osdr_import_rejects_xlsx_until_a_workbook_parser_exists(monkeypatch):
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_scientific_data=True,
+    )
+    xlsx_file = _osdr_dataset_file(
+        file_size_bytes=100,
+        restricted=False,
+    ).model_copy(
+        update={
+            "file_name": "panel.xlsx",
+            "file_format": "xlsx",
+        }
+    )
+    monkeypatch.setenv("NASA_OSDR_IMPORT_MAX_BYTES", "1000")
+    monkeypatch.setattr(
+        "app.main.fetch_osdr_study_metadata",
+        lambda _accession: _osdr_metadata(),
+    )
+    monkeypatch.setattr(
+        "app.main.fetch_osdr_dataset_file_metadata",
+        lambda _accession, _file_name: (xlsx_file, {"restricted": False}),
+    )
+    monkeypatch.setattr(
+        "app.main.download_osdr_csv",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("xlsx must not be sent to the CSV downloader")
+        ),
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/scientific-data/osdr/studies/OSD-575/"
+            "files/panel.xlsx/imports",
+            headers=_authorization_headers(
+                permissions=["scientific-data:import"]
+            ),
+        )
+
+    assert response.status_code == 415
+    connection = connect_database()
+    try:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM nasa_osdr_dataset_imports"
+        ).fetchone()[0] == 0
+    finally:
+        connection.close()
+
+
+def test_osdr_import_rolls_back_partial_persistence(monkeypatch):
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_scientific_data=True,
+    )
+    content = b"sample,value\nS1,1\n"
+    dataset_file = _osdr_dataset_file(file_size_bytes=len(content), restricted=False)
+    monkeypatch.setenv("NASA_OSDR_IMPORT_MAX_BYTES", str(len(content)))
+    monkeypatch.setattr(
+        "app.main.fetch_osdr_study_metadata",
+        lambda _accession: _osdr_metadata(),
+    )
+    monkeypatch.setattr(
+        "app.main.fetch_osdr_dataset_file_metadata",
+        lambda _accession, _file_name: (
+            dataset_file,
+            {"file_name": dataset_file.file_name, "restricted": False},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.main.download_osdr_csv",
+        lambda _file, *, max_bytes: content,
+    )
+
+    with TestClient(app) as client:
+        connection = connect_database()
+        try:
+            connection.execute(
+                """
+                CREATE TRIGGER reject_nasa_import_row
+                BEFORE INSERT ON nasa_osdr_dataset_import_rows
+                BEGIN
+                    SELECT RAISE(ABORT, 'simulated row storage failure');
+                END
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        response = client.post(
+            "/api/v1/scientific-data/osdr/studies/OSD-575/"
+            "files/test-transformed.csv/imports",
+            headers=_authorization_headers(
+                permissions=["scientific-data:import"]
+            ),
+        )
+
+    assert response.status_code == 500
+    connection = connect_database()
+    try:
+        for table_name in (
+            "nasa_osdr_study_metadata",
+            "nasa_osdr_dataset_files",
+            "nasa_osdr_dataset_imports",
+            "nasa_osdr_dataset_import_rows",
+            "nasa_osdr_import_transformations",
+        ):
+            assert connection.execute(
+                f"SELECT COUNT(*) FROM {table_name}"
+            ).fetchone()[0] == 0
+    finally:
+        connection.close()

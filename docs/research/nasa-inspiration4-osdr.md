@@ -1,7 +1,7 @@
 # NASA OSDR e Inspiration4: levantamento inicial
 
-**Estado:** levantamento documental; nenhum dado científico foi copiado para o
-repositório e nenhuma integração NASA foi implementada.
+**Estado:** levantamento documental e conector limitado a metadados públicos;
+nenhum arquivo científico ou dado biomédico foi copiado para o repositório.
 **Consultado em:** 2026-11-14.
 **Objetivo:** identificar dados e referências reutilizáveis para pesquisa e
 contexto, sem os tratar como limites clínicos nem como telemetria operacional.
@@ -94,6 +94,51 @@ os metadados de qualidade e as condições de acesso/licença. A API de dados
 biológicos do OSDR anuncia pesquisa de metadados e consulta de datasets, ensaios
 e amostras; os seus filtros e formatos devem ser usados para catalogação
 reprodutível.
+
+## Implementação do catálogo no backend
+
+O backend consulta a API de metadados do OSDR para um accession
+`OSD-<número>` pedido explicitamente, permite descobrir datasets por organismo
+ou fase de voo e mantém um inventário de ficheiros em cache local. Metadados e
+inventário podem ser lidos offline depois de consultados. A fonte consultada é
+[NASA OSDR Biological Data API](https://visualization.osdr.nasa.gov/biodata/api/v2/dataset/OSD-575/).
+
+Existe também importação explícita de ficheiros CSV marcados individualmente
+pela NASA como não restritos. A permissão `scientific-data:import` e o limite
+operacional `NASA_OSDR_IMPORT_MAX_BYTES` são obrigatórios. A importação guarda
+os bytes originais, linhas analisadas sem conversão de valores e o registo de
+proveniência; `files_downloaded` só é verdadeiro quando existe uma importação
+persistida para o estudo. A leitura da importação permanece disponível offline.
+Falhas de rede ou validação não substituem importações anteriores. A citação e
+a presença do registo no catálogo não atestam licença ou autorização para
+reutilizar/redistribuir os dados associados. A normalização de unidades e
+formatos além de CSV ainda não está implementada; confirmar também versão,
+atribuição exigida e semântica de cada variável antes de utilização científica.
+
+### Gate para formatos e mapeamentos científicos
+
+Uma verificação dos metadados oficiais de ficheiros confirma que a extensão
+indica diferentes tipos de conteúdo, não uma semântica uniforme:
+
+| Ficheiro oficial | Metadata OSDR | Decisão para esta integração |
+|---|---|---|
+| OSD-569 `LSDS-7_Complete_Blood_Count_CBC_TRANSFORMED.csv` | Categoria `Complete Blood Count`, 9.317 bytes, `restricted: false` | CSV pode ser arquivado e consultado como valores de origem; não é uma das métricas operacionais atuais e não deve ser convertido em sinal vital. |
+| OSD-575 `LSDS-8_Multiplex_serum.immune.AlamarPanel_SUBMITTED.xlsx` | Categoria `Immunoassay`, 322.799 bytes, `restricted: false` | XLSX não é aceite pelo importador CSV. O nome/categoria não define um esquema clínico nem uma unidade normalizada. |
+| OSD-569 `GLDS-561_long-readRNAseq_Direct_RNA_seq_Gene_Expression_Processed.xlsx` | Categoria `long read RNA-Seq`, 123.312.037 bytes, `restricted: false` | XLSX de expressão génica não é um dataset de sinais vitais e fica fora da ingestão tabular atual. |
+
+Os tamanhos e categorias acima vêm da API oficial de metadata por ficheiro,
+consultada em 2026-11-15; os conteúdos não foram descarregados nem importados.
+O `restricted: false` indica o estado apresentado pelo catálogo, não uma licença
+de redistribuição. O endpoint deve continuar a rejeitar XLSX com `415` até
+existir um parser de workbook que preserve folhas, cabeçalhos, tipos/valores de
+origem e localização das linhas, e que tenha contrato e testes próprios.
+
+Antes de qualquer mapeamento para indicadores operacionais, exigir por ficheiro:
+documentação de variáveis e unidades, identificação de colunas/códigos,
+tratamento de valores ausentes/qualificadores, validação contra o conteúdo e
+versão exatos, citação e termos de uso. Sem esta evidência, guardar os valores
+como dados científicos de origem ou não importar; não inferir equivalência
+clínica pela semelhança do nome de uma coluna.
 
 ## Seguimento: dados de sono, comportamento e wearable
 

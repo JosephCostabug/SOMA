@@ -97,6 +97,10 @@ class MissionIdentity(BaseModel):
             raise ValueError("As permissões não podem conter valores vazios.")
         if any(not astronaut_id for astronaut_id in self.astronaut_ids):
             raise ValueError("Os escopos de astronauta não podem conter valores vazios.")
+        if (self.key_id is None) != (self.public_key_thumbprint is None):
+            raise ValueError(
+                "key_id e public_key_thumbprint têm de ser provisionados em conjunto."
+            )
         if self.actor_type in {ActorType.DEVICE, ActorType.SERVICE} and (
             not self.key_id or not self.public_key_thumbprint
         ):

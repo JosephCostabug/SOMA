@@ -114,6 +114,34 @@ class OnboardTokenService:
             raise
         return credentials
 
+    def issue_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        configuration: MissionIdentityConfiguration,
+        subject: str,
+        actor_type: ActorType,
+        permissions: frozenset[str],
+        astronaut_ids: frozenset[str],
+        access_lifetime_seconds: int,
+        now: datetime,
+    ) -> IssuedCredentials:
+        if not connection.in_transaction:
+            raise CredentialIssueError(
+                "A emissão transacional requer uma transação ativa."
+            )
+        return self._issue_with_family(
+            connection,
+            configuration=configuration,
+            subject=subject,
+            actor_type=actor_type,
+            permissions=permissions,
+            astronaut_ids=astronaut_ids,
+            access_lifetime_seconds=access_lifetime_seconds,
+            now=now,
+            family_id=str(uuid4()),
+        )
+
     def refresh(
         self,
         connection: sqlite3.Connection,

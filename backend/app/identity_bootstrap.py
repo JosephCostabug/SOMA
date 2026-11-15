@@ -11,10 +11,44 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.key_management import VerificationKeySet
 from app.mission_identity import ActorType, MissionIdentityConfiguration
+from app.schemas import MonitoringAlertRule
 
 
 class IdentityBootstrapError(ValueError):
     pass
+
+
+def read_protected_file(path: str | Path, *, max_bytes: int, label: str) -> bytes:
+    protected_path = Path(path)
+    if not protected_path.is_absolute():
+        raise IdentityBootstrapError(f"O caminho de {label} tem de ser absoluto.")
+    try:
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+        file_descriptor = os.open(protected_path, flags)
+        with os.fdopen(file_descriptor, "rb") as protected_file:
+            file_stat = os.fstat(protected_file.fileno())
+            if not stat.S_ISREG(file_stat.st_mode):
+                raise IdentityBootstrapError(f"O ficheiro de {label} tem de ser regular.")
+            if file_stat.st_size > max_bytes:
+                raise IdentityBootstrapError(f"O ficheiro de {label} excede o tamanho permitido.")
+            if os.name == "posix":
+                if file_stat.st_uid != os.geteuid() or file_stat.st_mode & 0o077:
+                    raise IdentityBootstrapError(
+                        f"O ficheiro de {label} deve pertencer à conta do serviço e "
+                        "não permitir acesso a grupo/outros (chmod 600)."
+                    )
+            elif os.name == "nt":
+                if getattr(file_stat, "st_file_attributes", 0) & 0x400:
+                    raise IdentityBootstrapError(f"O ficheiro de {label} não pode ser reparse point.")
+                _validate_windows_file_acl(protected_file.fileno())
+            content = protected_file.read(max_bytes + 1)
+        if len(content) > max_bytes:
+            raise IdentityBootstrapError(f"O ficheiro de {label} excede o tamanho permitido.")
+        return content
+    except IdentityBootstrapError:
+        raise
+    except OSError as error:
+        raise IdentityBootstrapError(f"Não foi possível ler o ficheiro protegido de {label}.") from error
 
 
 def _validate_windows_file_acl(file_descriptor: int) -> None:
@@ -227,6 +261,14 @@ class OnboardTokenVerifier(BaseModel):
         return service.identity_id
 
 
+class AuthenticationPublicKey(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    identity_id: str = Field(min_length=1, max_length=200)
+    key_id: str = Field(min_length=1, max_length=100)
+    public_key_pem: str = Field(min_length=1, max_length=8192)
+
+
 class MissionIdentityBootstrap(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -234,6 +276,14 @@ class MissionIdentityBootstrap(BaseModel):
     ground_keys: VerificationKeySet
     onboard_token_verifier: OnboardTokenVerifier
     initial_signed_delegation_tokens: tuple[str, ...] = Field(min_length=1)
+    monitoring_alert_rules: tuple[MonitoringAlertRule, ...] = Field(
+        default=(),
+        max_length=100,
+    )
+    authentication_keys: tuple[AuthenticationPublicKey, ...] = Field(
+        default=(),
+        max_length=500,
+    )
 
     @model_validator(mode="after")
     def validate_bootstrap(self) -> Self:
@@ -251,38 +301,62 @@ class MissionIdentityBootstrap(BaseModel):
             )
         if any(not token for token in self.initial_signed_delegation_tokens):
             raise ValueError("Os tokens de delegação iniciais não podem estar vazios.")
+        rule_ids = [rule.rule_id for rule in self.monitoring_alert_rules]
+        if len(rule_ids) != len(set(rule_ids)):
+            raise ValueError("Os identificadores das regras de alerta têm de ser únicos.")
+        authentication_identity_ids = [
+            key.identity_id for key in self.authentication_keys
+        ]
+        if len(authentication_identity_ids) != len(set(authentication_identity_ids)):
+            raise ValueError("Cada identidade só pode ter uma chave de autenticação ativa.")
+        identities = {
+            identity.identity_id: identity
+            for identity in self.base_configuration.identities
+        }
+        for authentication_key in self.authentication_keys:
+            identity = identities.get(authentication_key.identity_id)
+            if (
+                identity is None
+                or identity.actor_type not in {ActorType.USER, ActorType.DEVICE}
+                or identity.key_id != authentication_key.key_id
+                or identity.public_key_thumbprint is None
+            ):
+                raise ValueError(
+                    "A chave de autenticação tem de corresponder a uma identidade "
+                    "de utilizador/dispositivo provisionada."
+                )
+            try:
+                key = serialization.load_pem_public_key(
+                    authentication_key.public_key_pem.encode("ascii")
+                )
+            except (ValueError, TypeError, UnicodeEncodeError) as error:
+                raise ValueError("Uma chave de autenticação não é uma PEM válida.") from error
+            if not isinstance(key, rsa.RSAPublicKey) or key.key_size < 2048:
+                raise ValueError(
+                    "As chaves de autenticação têm de ser RSA de pelo menos 2048 bits."
+                )
+            fingerprint = hashlib.sha256(
+                key.public_bytes(
+                    encoding=serialization.Encoding.DER,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+                )
+            ).hexdigest()
+            if identity.public_key_thumbprint != f"sha256:{fingerprint}":
+                raise ValueError(
+                    "A chave de autenticação não corresponde à impressão digital "
+                    "da identidade provisionada."
+                )
         self.onboard_token_verifier.validate_for(self.base_configuration)
         return self
 
 
 def load_identity_bootstrap(path: str | Path) -> MissionIdentityBootstrap:
-    bootstrap_path = Path(path)
-    if not bootstrap_path.is_absolute():
-        raise IdentityBootstrapError("MISSION_BOOTSTRAP_PATH tem de ser absoluto.")
     try:
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
-        file_descriptor = os.open(bootstrap_path, flags)
-        with os.fdopen(file_descriptor, "rb") as bootstrap_file:
-            file_stat = os.fstat(bootstrap_file.fileno())
-            if not stat.S_ISREG(file_stat.st_mode):
-                raise IdentityBootstrapError("O ficheiro de bootstrap tem de ser regular.")
-            if file_stat.st_size > 1_048_576:
-                raise IdentityBootstrapError("O ficheiro de bootstrap excede 1 MiB.")
-            if os.name == "posix":
-                if file_stat.st_uid != os.geteuid() or file_stat.st_mode & 0o077:
-                    raise IdentityBootstrapError(
-                        "O bootstrap deve pertencer ao utilizador do serviço e não permitir "
-                        "acesso a grupo ou outros utilizadores (chmod 600)."
-                    )
-            elif os.name == "nt":
-                if getattr(file_stat, "st_file_attributes", 0) & 0x400:
-                    raise IdentityBootstrapError(
-                        "O ficheiro de bootstrap não pode ser um reparse point."
-                    )
-                _validate_windows_file_acl(bootstrap_file.fileno())
-            content = bootstrap_file.read(1_048_577)
-        if len(content) > 1_048_576:
-            raise IdentityBootstrapError("O ficheiro de bootstrap excede 1 MiB.")
+        content = read_protected_file(
+            path,
+            max_bytes=1_048_576,
+            label="bootstrap",
+        )
         data = json.loads(content)
         return MissionIdentityBootstrap.model_validate(data)
     except IdentityBootstrapError:

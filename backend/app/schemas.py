@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import StrEnum
 from math import isfinite
-from typing import Literal
+from typing import Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -52,6 +52,203 @@ class DataOrigin(StrEnum):
     NASA = "nasa"
     SIMULATED = "simulated"
     MANUAL = "manual"
+
+
+class OSDRDatasetImport(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    import_id: UUID
+    accession: str
+    file_name: str
+    file_sha256: str
+    file_size_bytes: int
+    record_count: int
+    imported_at: datetime
+    source_file_updated_at: datetime | None
+    source_api_url: str
+    source_download_url: str
+    citation: str
+    citation_status: Literal["not_verified"]
+    provenance: Literal["nasa_osdr"]
+    license_status: Literal["not_verified"]
+    parser_version: str
+    normalization_status: Literal["not_performed"]
+
+
+class OSDRDatasetImportRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source_row_number: int
+    origin: Literal["nasa"]
+    source_values: dict[str, str | None]
+
+
+class OSDRDatasetImportRecords(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    import_id: UUID
+    accession: str
+    file_name: str
+    offset: int
+    limit: int
+    total: int
+    items: list[OSDRDatasetImportRecord]
+
+
+class OSDRDatasetImportList(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: list[OSDRDatasetImport]
+    total: int
+
+
+class AuthenticationChallengeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str = Field(min_length=1, max_length=200)
+    actor_type: Literal["user", "device"]
+
+
+class AuthenticationChallenge(BaseModel):
+    challenge_id: UUID
+    nonce: str
+    subject: str
+    actor_type: Literal["user", "device"]
+    mission_id: str
+    issuer: str
+    key_id: str
+    issued_at: datetime
+    expires_at: datetime
+
+
+class AuthenticationTokenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    challenge_id: UUID
+    proof: str = Field(min_length=1, max_length=16384)
+    permissions: list[str] = Field(min_length=1, max_length=100)
+    astronaut_ids: list[str] = Field(min_length=1, max_length=100)
+    access_lifetime_seconds: int = Field(gt=0, strict=True)
+
+    @model_validator(mode="after")
+    def validate_unique_claims(self) -> Self:
+        if (
+            len(self.permissions) != len(set(self.permissions))
+            or any(not item for item in self.permissions)
+        ):
+            raise ValueError("As permissões têm de ser únicas e não vazias.")
+        if (
+            len(self.astronaut_ids) != len(set(self.astronaut_ids))
+            or any(not item for item in self.astronaut_ids)
+        ):
+            raise ValueError("Os escopos têm de ser únicos e não vazios.")
+        return self
+
+
+class AuthenticationTokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: Literal["Bearer"] = "Bearer"
+    access_expires_at: datetime
+    refresh_expires_at: datetime
+
+
+class AuthenticationRefreshRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    refresh_token: str = Field(min_length=1, max_length=512)
+    access_lifetime_seconds: int = Field(gt=0, strict=True)
+
+
+class AuthenticationRevokeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    refresh_token: str = Field(min_length=1, max_length=512)
+
+
+class MonitoringAlertRuleDefinition(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    metric: Metric
+    minimum_value: float | None = None
+    maximum_value: float | None = None
+    rationale: str = Field(min_length=1, max_length=500)
+    source_reference: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_definition(self) -> Self:
+        minimum, maximum = TECHNICAL_LIMITS[self.metric]
+        if not self.rationale.strip() or not self.source_reference.strip():
+            raise ValueError("A justificação e a referência da regra não podem estar vazias.")
+        if self.minimum_value is None and self.maximum_value is None:
+            raise ValueError("A regra tem de configurar um limite mínimo ou máximo.")
+        for value in (self.minimum_value, self.maximum_value):
+            if value is not None and (
+                not isfinite(value) or not minimum <= value <= maximum
+            ):
+                raise ValueError(
+                    "Os limites da regra têm de ser finitos e estar dentro dos "
+                    "limites técnicos do indicador."
+                )
+        if (
+            self.minimum_value is not None
+            and self.maximum_value is not None
+            and self.minimum_value >= self.maximum_value
+        ):
+            raise ValueError("O limite mínimo tem de ser inferior ao máximo.")
+        return self
+
+
+class MonitoringAlertRule(MonitoringAlertRuleDefinition):
+    rule_id: str = Field(min_length=1, max_length=100)
+    version: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def validate_rule_id(self) -> Self:
+        if not self.rule_id.strip():
+            raise ValueError("rule_id não pode estar vazio.")
+        return self
+
+
+class MonitoringAlertRuleUpdate(MonitoringAlertRuleDefinition):
+    expected_version: int = Field(ge=0, strict=True)
+
+
+class MonitoringAlertRuleVersion(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    expected_version: int = Field(ge=1, strict=True)
+
+
+class MonitoringAlertRuleRecord(BaseModel):
+    rule: MonitoringAlertRule
+    active: bool
+    updated_by: str
+    updated_at: datetime
+
+
+class MonitoringAlertRuleHistory(BaseModel):
+    items: list[MonitoringAlertRuleRecord]
+    total: int
+
+
+class MonitoringAlertRuleChange(BaseModel):
+    change_id: int
+    mission_id: str
+    rule_id: str
+    version: int
+    action: Literal["provisioned", "created", "updated", "reactivated", "deactivated"]
+    actor_id: str
+    changed_at: datetime
+    previous_active: bool | None
+    current_active: bool
+    previous_rule: MonitoringAlertRule | None
+    current_rule: MonitoringAlertRule
+
+
+class MonitoringAlertRuleAudit(BaseModel):
+    items: list[MonitoringAlertRuleChange]
+    total: int
 
 
 class MeasurementInput(BaseModel):
@@ -122,8 +319,16 @@ class OfflineMeasurementInput(MeasurementInput):
     sequence_number: int = Field(ge=1)
 
 
+class EarthSyncMeasurementInput(OfflineMeasurementInput):
+    earth_sync_eligible: bool = Field(strict=True)
+
+
 class OfflineReadingInput(ReadingBatchInput):
     measurements: list[OfflineMeasurementInput] = Field(min_length=1)
+
+
+class EarthSyncReadingInput(ReadingBatchInput):
+    measurements: list[EarthSyncMeasurementInput] = Field(min_length=1)
 
 
 class OfflineSyncBatchInput(BaseModel):
@@ -154,6 +359,10 @@ class OfflineSyncBatchInput(BaseModel):
         if len(reading_ids) != len(set(reading_ids)):
             raise ValueError("reading_id tem de ser único dentro do lote.")
         return self
+
+
+class EarthSyncBatchInput(OfflineSyncBatchInput):
+    readings: list[EarthSyncReadingInput] = Field(min_length=1, max_length=100)
 
 
 class HealthReading(BaseModel):
@@ -239,6 +448,39 @@ class ReadingOperationsSummary(BaseModel):
     scope: Literal["operational_ingestion_summary"]
 
 
+class MonitoringAlert(BaseModel):
+    alert_id: int
+    astronaut_id: str
+    reading_id: UUID
+    rule_id: str
+    rule_version: int
+    metric: Metric
+    value: float
+    unit: str
+    direction: Literal["below_minimum", "above_maximum"]
+    configured_limit: float
+    rationale: str
+    source_reference: str
+    measured_at: datetime
+    generated_at: datetime
+    acknowledgement_count: int = Field(ge=0)
+    acknowledged_by_current_user: bool
+    interpretation: Literal["monitoring_support_not_diagnosis"]
+
+
+class MonitoringAlertHistory(BaseModel):
+    items: list[MonitoringAlert]
+    total: int
+
+
+class MonitoringAlertAcknowledgement(BaseModel):
+    acknowledgement_id: int
+    alert_id: int
+    actor_id: str
+    acknowledged_at: datetime
+    status: Literal["acknowledged"]
+
+
 class SyncAcknowledgementItem(BaseModel):
     reading_id: UUID
     sequence_number: int
@@ -248,6 +490,47 @@ class SyncAcknowledgementItem(BaseModel):
 class SyncAcknowledgement(BaseModel):
     batch_id: UUID
     items: list[SyncAcknowledgementItem]
+
+
+class EarthSyncAdmissionAcknowledgement(BaseModel):
+    batch_id: UUID
+    onboard_status: Literal["persisted"] = "persisted"
+    items: list[SyncAcknowledgementItem]
+    earth_delivery_status: Literal[
+        "not_requested",
+        "no_new_eligible_items",
+        "pending",
+        "acknowledged_durable",
+        "rejected_permanent",
+        "conflict_isolated",
+    ]
+    delivery_batch_id: UUID | None = None
+
+
+class EarthSyncDeliveryStatus(BaseModel):
+    delivery_batch_id: UUID
+    origin_batch_id: UUID
+    source_service_id: str
+    destination_service_id: str
+    payload_sha256: str
+    status: Literal[
+        "pending",
+        "in_flight",
+        "retry_wait",
+        "acknowledged_durable",
+        "rejected_permanent",
+        "conflict_isolated",
+    ]
+    created_at: datetime
+    attempt_count: int
+    last_attempt_at: datetime | None
+    next_attempt_at: datetime | None
+    acknowledged_at: datetime | None
+    error_code: str | None
+
+
+class EarthSyncReceiptResponse(BaseModel):
+    receipt: str
 
 
 class SyncBatchStatus(BaseModel):

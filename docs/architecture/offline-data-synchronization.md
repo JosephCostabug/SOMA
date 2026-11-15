@@ -1,8 +1,9 @@
 # Arquitetura de dados e sincronização offline
 
-**Estado:** decisão arquitetural para orientar o desenvolvimento
+**Estado:** decisão arquitetural parcialmente implementada; ver as limitações
+abaixo e a documentação da API para o estado atual
 **Âmbito:** fluxo de dados entre dispositivos/PWA, serviço a bordo e sistema
-terrestre. Este documento não descreve uma implementação já concluída.
+terrestre.
 
 ## Contexto e objetivo
 
@@ -89,19 +90,25 @@ credenciais em `backend/app/token_service.py` emite tokens de acesso RS256 e
 refresh tokens opacos de uso unico; renova por rotacao e revoga localmente a
 familia em caso de reutilizacao. O `jti` de acesso e o hash SHA-256 do refresh
 sao persistidos, e cada pedido autenticado verifica o estado local de revogacao.
-O servico ainda nao tem endpoints HTTP nem um mecanismo offline de autenticacao
-para provar a identidade de utilizadores/dispositivos; portanto nao deve ser
-exposto aos consumidores ate essa fronteira ser definida. A chave privada
-onboard tem de ser fornecida em runtime e nao e guardada no bootstrap nem na
-base de dados.
+Os endpoints HTTP de autenticacao offline estao implementados em
+`POST /api/v1/auth/challenges`, `/api/v1/auth/token`, `/api/v1/auth/refresh` e
+`/api/v1/auth/revoke`. O desafio vincula a prova de posse a uma chave publica
+previamente provisionada para uma identidade de utilizador ou dispositivo; as
+permissoes e escopos emitidos continuam limitados pela identidade e delegacao
+validadas. A chave privada onboard e lida de ficheiro protegido em runtime e
+nao e guardada no bootstrap nem na base de dados. A autenticacao funcional nao
+substitui o provisionamento e a protecao operacional das chaves privadas.
 
-Ainda faltam um canal/CLI administrativo para atualizar/revogar delegacoes,
-prova de posse dos dispositivos, autenticacao offline dos utilizadores,
-fornecedor seguro da chave privada, politica formal de retencao do estado de
-credenciais, rotacao de chaves, protecao contra rollback/adulteracao por
-administrador local e transporte TLS/mTLS. JWT nao substitui TLS nem
-autenticacao mutua entre componentes. Esta implementacao nao esta validada para
-uso operacional ou dados reais.
+Continuam pendentes um canal/CLI administrativo para atualizar/revogar
+delegacoes, gestao segura e rotacao de chaves, politica formal de retencao do
+estado de credenciais, protecao contra rollback/adulteracao por administrador
+local. O canal de sincronização bordo–Terra tem mTLS próprio, mas isso não
+substitui o transporte TLS geral da API nem a configuração de gateway. A emissão de desafios tem um limite móvel por
+identidade, configurado explicitamente e persistido em SQLite. Isto não limita
+por IP nem protege contra tráfego distribuído entre bases independentes; esses
+controlos continuam a exigir gateway e política de missão. JWT nao substitui
+TLS nem autenticacao mutua entre componentes. A implementacao nao esta
+validada para uso operacional ou dados reais.
 
 ## Fluxos de comunicação
 
@@ -171,9 +178,122 @@ transação SQLite. Repetir o mesmo lote devolve o recibo original; reutilizar o
 `batch_id` com conteúdo diferente dá conflito. O endpoint
 `GET /api/v1/sync/batches/{batch_id}` permite ao mesmo dispositivo recuperar o
 resultado depois de perder a resposta. Lotes rejeitados não deixam recibos nem
-medições parciais. Esta implementação cobre apenas a receção no serviço local;
-não implementa estado de retransmissão do serviço a bordo para o sistema
-terrestre.
+medições parciais. Isto cobre apenas a receção dispositivo → serviço local.
+
+### Estado da outbox bordo → Terra
+
+A primeira fase está implementada por `POST /api/v2/sync/readings`; a rota v1
+continua local-only. A v2 exige `earth_sync_eligible` explicitamente em cada
+medição. O destino `EARTH_SERVICE_ID` só é obrigatório quando há itens elegíveis;
+o emissor é derivado da identidade onboard validada. A transação local guarda
+medições novas, elegibilidade, recibo inbound, snapshot canónico, hash e itens
+em `earth_outbound_batches`/`earth_outbound_batch_items`. A coluna nova tem
+default `0`, portanto migração não torna histórico elegível nem cria outbox para
+dados antigos. Medições previamente recebidas não são modificadas nem
+reenfileiradas.
+
+O estado inicial é `pending`; a resposta declara separadamente
+`onboard_status: persisted` e `earth_delivery_status: pending`. Replay do lote
+inbound retorna o mesmo `delivery_batch_id`. O hash é apenas controlo de
+integridade do conteúdo e não autentica o peer.
+
+O worker one-shot, estado de tentativas/lease, transporte HTTPS/mTLS,
+receptor terrestre e recibos JWT autenticados estão implementados. A
+configuração mantém parâmetros de timeout, retry e lease explícitos; não há
+cadência nem scheduler embutido. `pending` continua a significar apenas que a
+obrigação está durável localmente, não que houve transmissão ou receção
+terrestre. Os snapshots, rejeições e conflitos permanecem guardados; não há
+rotina de descarte.
+
+### Contrato HTTP bordo–Terra, versão 1
+
+O onboard envia um `POST /api/v1/sync/earth/batches` por HTTPS/mTLS. O corpo é
+um objeto JSON canónico, ordenado por chave e sem espaços insignificantes, com
+campos estritos:
+
+```json
+{
+  "protocol_version": 1,
+  "delivery_batch_id": "UUID",
+  "origin_batch_id": "UUID",
+  "source_service_id": "identidade onboard",
+  "destination_service_id": "identidade Terra",
+  "created_at": "instante RFC 3339 com fuso",
+  "items": [
+    {
+      "reading_id": "UUID",
+      "astronaut_id": "identificador provisionado",
+      "metric": "indicador canónico",
+      "value": 72,
+      "unit": "bpm",
+      "measured_at": "instante RFC 3339 com fuso",
+      "received_at": "instante RFC 3339 com fuso",
+      "glucose_context": null,
+      "declared_origin": "manual",
+      "source_device_id": "UUID",
+      "sequence_number": 12,
+      "origin_batch_id": "UUID"
+    }
+  ]
+}
+```
+
+O JWT bearer do onboard é RS256, com `iss`/`sub` iguais à identidade emissora,
+`aud` igual ao receptor, `jti`, `iat`, `nbf`, `exp`, `protocol_version`,
+`delivery_batch_id` e `payload_sha256`. O receptor exige exatamente estas
+claims, confirma a identidade e calcula novamente o hash sobre a representação
+canónica. O hash assegura integridade do payload, não autentica o serviço. As
+chaves privadas JWT são distintas das chaves TLS.
+
+O sistema terrestre serializa escritores com transação SQLite `BEGIN IMMEDIATE`
+e persiste envelope, itens, relações e recibo antes de responder:
+
+| HTTP | Estado do recibo | Significado para a outbox |
+|---|---|---|
+| `200` | `persisted` ou `already_persisted` | Aceita apenas se recibo assinado confirmar o mesmo lote, hash e conjunto exato de `reading_id`; passa a `acknowledged_durable`. |
+| `422` | `rejected_permanent` | Rejeição autenticada e preservada; não repetir automaticamente. |
+| `409` | `conflict_isolated` | Conflito autenticado e preservado; não repetir automaticamente. |
+| Sem recibo válido, falha de ligação ou erro transitório | — | Não prova sucesso; mantém o lote e agenda retry conforme valores configurados. |
+
+O recibo é JWT RS256 Terra, com emissor/audiência, `jti`, lote, hash,
+`recorded_at`, estado, código de resultado e IDs aceites. O receptor grava o
+JWT na mesma transação que os dados. Em replay idêntico, devolve o recibo
+original; não reescreve medições. Reutilização do ID de lote com outro payload,
+conteúdo diferente para um `reading_id`, ou reutilização de sequência por
+dispositivo gera conflito sem sobrescrever dados.
+
+O runner `python -m app.earth_receiver` configura TLS com validação obrigatória
+de certificado cliente (`CERT_REQUIRED`). O arranque do modo `earth` exige o
+runner mTLS e a rota recusa HTTP. O proxy TLS, se usado, tem de validar mTLS e
+isolar o serviço de acessos diretos não autenticados. O worker é one-shot:
+`python -m app.earth_sync_worker`; o agendador, se necessário, é configurado
+pela operação e não tem cadência predefinida pelo código.
+
+### Configuração obrigatória e decisões operacionais
+
+Ambos os serviços requerem `EARTH_SYNC_ROLE`,
+`EARTH_SYNC_LOCAL_SERVICE_ID`, `EARTH_SYNC_PEER_SERVICE_ID`,
+`EARTH_SYNC_SIGNING_KEY_PATH` e `EARTH_SYNC_PEER_PUBLIC_KEY_PATH`. As
+identidades têm de ser distintas; as chaves de assinatura dos serviços também.
+O serviço onboard requer `EARTH_SYNC_RECEIVER_URL` (HTTPS e caminho exato),
+`EARTH_SYNC_CA_BUNDLE_PATH`, `EARTH_SYNC_CLIENT_CERT_PATH`,
+`EARTH_SYNC_CLIENT_KEY_PATH`, `EARTH_SYNC_REQUEST_TIMEOUT_SECONDS`,
+`EARTH_SYNC_RETRY_BASE_SECONDS`, `EARTH_SYNC_RETRY_MAX_SECONDS` e
+`EARTH_SYNC_LEASE_SECONDS`. O lease tem de exceder o timeout; o máximo de
+retry não pode ser inferior à base. O receptor requer
+`EARTH_SYNC_BIND_HOST`, `EARTH_SYNC_BIND_PORT`,
+`EARTH_SYNC_SERVER_CERT_PATH`, `EARTH_SYNC_SERVER_KEY_PATH` e
+`EARTH_SYNC_CLIENT_CA_BUNDLE_PATH`. As chaves privadas e ficheiros de
+credenciais são lidos através das verificações de proteção de ficheiros
+existentes.
+
+Continuam dependentes de requisitos operacionais: provisionamento e rotação
+das identidades, chaves e certificados; CAs confiáveis e revogação; DNS e
+topologia/firewall; bind/interface e proxy permitidos; valores aprovados de
+timeout, lease e backoff; invocação/scheduler do worker; capacidade, backups,
+recuperação e política de retenção; critérios de resolução de conflitos e
+rejeições. Nenhum valor operacional ou cadência é escolhido por omissão.
+Estas decisões e a durabilidade real da mídia precisam de validação de missão.
 
 ## Política de confirmação
 
@@ -215,25 +335,25 @@ Os conflitos devem ficar isolados da fila normal, com dados e motivo preservados
 até uma resolução autorizada, auditada e testada. Uma falha de sincronização não
 deve interromper recolha nem alertas locais.
 
-## Critérios para considerar esta decisão implementável
+## Próximas fases antes de considerar esta decisão operacionalmente preparada
 
-Antes de construir a fila offline, especificar e validar:
+O protocolo, a outbox, o worker e o receptor são funcionalidades implementadas,
+mas não equivalem a prontidão para missão. Antes de uso operacional, especificar,
+aprovar e verificar:
 
-1. Emissor local da missão, provisionamento de utilizadores/dispositivos,
-   permissões offline, expiração e revogação quando não há ligação ao solo.
-2. Contrato de payload e versão de protocolo, tamanho de lote, limites de
-   armazenamento e política de retenção.
-3. Garantias de durabilidade em cada componente, incluindo configuração SQLite
-   ou escolha de armazenamento a bordo e comportamento diante de falhas físicas.
-4. Recuperação do contador de sequência e da fila após reinício, restauro,
-   substituição ou clonagem de dispositivo.
-5. Formato de confirmação por medição e por salto; persistência do histórico de
-   lotes e tentativas.
-6. Política operacional para conflitos, dados inválidos, relógios incertos e
-   armazenamento próximo do limite.
-7. Testes de falha de rede em cada fase do envio, reinícios antes/depois da
-   confirmação, envios repetidos e concorrentes, corrupção e recuperação de
-   armazenamento e sincronização entre múltiplos saltos.
+1. Provisionamento/revogação/rotação de identidades, chaves e certificados; CAs,
+   identidade do serviço, DNS, firewall, interface de bind e eventual proxy.
+2. Timeout, lease, backoff e invocação do worker; manter esses valores alinhados
+   com a latência e disponibilidade medidas, sem assumir uma cadência.
+3. Capacidade de armazenamento, cópias de segurança, recuperação e retenção.
+   Não há eliminação automática de pendências, rejeições ou conflitos.
+4. Critérios e responsáveis para resolução de conflitos e rejeições permanentes.
+5. Ensaios de reinício, perda de conexão, resposta perdida após commit, falha
+   parcial/transacional, concorrência de envios e receções, integridade e
+   recuperação de armazenamento no hardware e sistema de ficheiros finais.
+6. Validação independente proporcional ao risco, testes de segurança e ensaios
+   operacionais representativos; testes automatizados não demonstram por si só
+   durabilidade física, segurança completa ou aptidão para missão.
 
 Esta decisão não certifica o sistema para uso espacial ou clínico. A utilização
 com dados reais requer validação de segurança, privacidade, operação e missão,
