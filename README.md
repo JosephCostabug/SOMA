@@ -1,6 +1,50 @@
-# SOMA — Monitorização de Saúde Espacial
+# SOMA — Um mapa do corpo para a missão
 
-Protótipo web para registar e consultar indicadores de saúde da tripulação.
+**Menos números soltos. Mais contexto para cuidar da tripulação.**
+
+Em missões espaciais longas, compreender o próprio estado de saúde não devia
+exigir que cada astronauta interpretasse tabelas clínicas. O SOMA organiza os
+indicadores por sistemas corporais e reúne, num só painel, o que foi medido, o
+que tem registos e qual é o próximo passo informativo — para que a tripulação e
+a equipa médica possam começar pela mesma visão.
+
+## A proposta
+
+Uma figura corporal interativa transforma o catálogo de indicadores num mapa
+fácil de explorar. Ao selecionar um sistema, o utilizador encontra os dados
+disponíveis, as tendências descritivas e o contexto de missão. A experiência
+complementa-se com registo offline e sincronização controlada, pensados para
+ambientes em que a ligação pode ser limitada.
+
+O SOMA foi concebido para apoiar a autoavaliação diária da tripulação e oferecer
+uma visão resumida a profissionais autorizados. Em vez de esconder a incerteza,
+o painel distingue dados observados de conteúdo demonstrativo e deixa claro
+quando não há informação suficiente.
+
+## O que já pode explorar
+
+- **Mapa corporal interativo:** navegue pelos sistemas e veja a cobertura e os
+  indicadores associados.
+- **Demonstração imediata:** percorra a interface sem credenciais, com valores,
+  estados e tendências sintéticos, identificados como exemplos.
+- **Consulta autorizada:** visualize medições, cobertura, tendências
+  descritivas e alertas dentro do período e das permissões concedidas.
+- **Registo offline:** prepare medições numa fila local e envie-as manualmente
+  quando houver ligação e autorização.
+- **Base preparada para operação controlada:** API FastAPI, base SQLite,
+  autenticação com escopos e opção de sincronização terrestre configurável.
+
+> **Estado do projeto:** o SOMA é um protótipo de monitorização, não um produto
+> clínico validado. Não diagnostica, não determina aptidão para voo e não
+> substitui protocolos médicos. A demonstração usa dados fictícios; o acesso a
+> dados reais requer configuração e credenciais da missão. A fila local não é
+> cifrada pela aplicação.
+
+## Experimentar o protótipo
+
+Inicie o serviço e abra o painel para explorar a demonstração sem credenciais.
+Para conhecer a API e os requisitos de configuração, consulte as secções abaixo.
+
 O backend usa Python, FastAPI e SQLite; a interface é HTML, CSS e JavaScript
 servidos pelo próprio FastAPI, sem etapa de build de frontend.
 
