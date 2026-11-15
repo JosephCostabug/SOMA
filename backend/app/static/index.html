@@ -256,11 +256,22 @@
       background: radial-gradient(ellipse at center, var(--surface-soft), var(--surface));
     }
     .body-model-3d { position: relative; display: grid; width: 100%; min-height: 350px; place-items: center; perspective: 850px; }
+    .body-model-stage {
+      position: relative;
+      display: grid;
+      width: 100%;
+      min-height: 350px;
+      place-items: center;
+      transform: rotateY(-12deg) rotateX(1deg);
+      transform-style: preserve-3d;
+      transition: transform 350ms ease;
+    }
+    .body-model-stage[data-angle="side"] { transform: rotateY(-30deg) rotateX(1deg) scale(.96); }
+    .body-view-toggle { position: absolute; top: 10px; right: 10px; z-index: 2; min-height: 40px; padding: 7px 10px; font-size: 12px; }
     .body-avatar-3d {
       position: relative;
       width: 160px;
       height: 350px;
-      transform: rotateY(-14deg) rotateX(2deg);
       transform-style: preserve-3d;
       filter: drop-shadow(12px 12px 10px rgba(21, 34, 56, .22));
     }
@@ -272,11 +283,19 @@
       content: "";
       transform: translateZ(-22px) scale(.9);
     }
+    .body-avatar-3d::after {
+      position: absolute;
+      inset: 14px 20px 10px;
+      border-radius: 48% 48% 25% 25%;
+      background: linear-gradient(90deg, #667b98, #98a9bf 55%, #5f738f);
+      content: "";
+      transform: translateZ(-30px) scale(.86);
+    }
     .avatar-part {
       position: absolute;
       border: 1px solid rgba(67, 87, 116, .48);
       background: linear-gradient(100deg, #879ab4 0%, #d7e0eb 42%, #a9b9cd 76%, #71849f 100%);
-      box-shadow: inset 9px 0 12px rgba(255, 255, 255, .4), inset -10px 0 14px rgba(46, 65, 92, .24);
+      box-shadow: 2px 3px 4px rgba(16, 27, 44, .18), inset 9px 0 12px rgba(255, 255, 255, .4), inset -10px 0 14px rgba(46, 65, 92, .24);
       transform-style: preserve-3d;
     }
     .avatar-head { top: 5px; left: 53px; width: 54px; height: 62px; border-radius: 48%; transform: translateZ(22px); }
@@ -313,6 +332,7 @@
       transform: translate(-50%, -50%);
     }
     .body-hotspot:hover, .body-hotspot[aria-pressed="true"] { background: var(--accent); outline: 2px solid var(--accent); outline-offset: 2px; }
+    .body-hotspot:focus-visible { z-index: 2; }
     .body-hotspot-wellbeing { top: 16%; left: 50%; }
     .body-hotspot-respiratory { top: 39%; left: 43%; }
     .body-hotspot-cardiovascular { top: 42%; left: 59%; }
@@ -691,7 +711,8 @@
       .body-map-layout { grid-template-columns: minmax(0, 1fr); gap: 10px; }
       .human-figure { min-height: 320px; }
       .body-model-3d { min-height: 310px; }
-      .body-avatar-3d { transform: scale(.88) rotateY(-14deg) rotateX(2deg); transform-origin: center; }
+      .body-model-stage { transform: scale(.88) rotateY(-12deg) rotateX(1deg); }
+      .body-model-stage[data-angle="side"] { transform: scale(.84) rotateY(-30deg) rotateX(1deg); }
       .body-system-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .demo-dashboard .mission-indicators { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       th, td { padding: 10px; }
@@ -740,23 +761,26 @@
           <div class="body-map-layout">
             <figure class="human-figure">
               <div id="body-model-3d" class="body-model-3d" role="group" aria-label="Figura humana 3D esquemática e interativa">
-                <div class="body-avatar-3d" aria-hidden="true">
-                  <span class="avatar-part avatar-head"></span>
-                  <span class="avatar-part avatar-neck"></span>
-                  <span class="avatar-part avatar-torso"></span>
-                  <span class="avatar-part avatar-pelvis"></span>
-                  <span class="avatar-part avatar-arm-left"></span>
-                  <span class="avatar-part avatar-arm-right"></span>
-                  <span class="avatar-part avatar-leg-left"></span>
-                  <span class="avatar-part avatar-leg-right"></span>
-                  <span class="avatar-part avatar-shin-left"></span>
-                  <span class="avatar-part avatar-shin-right"></span>
-                  <span class="avatar-part avatar-foot-left"></span>
-                  <span class="avatar-part avatar-foot-right"></span>
+                <button id="body-view-toggle" class="button secondary body-view-toggle" type="button" aria-controls="body-model-stage" aria-label="Alternar entre vista frontal e obliqua" aria-pressed="false">Alternar vista 3D</button>
+                <div id="body-model-stage" class="body-model-stage" data-angle="front">
+                  <div class="body-avatar-3d" aria-hidden="true">
+                    <span class="avatar-part avatar-head"></span>
+                    <span class="avatar-part avatar-neck"></span>
+                    <span class="avatar-part avatar-torso"></span>
+                    <span class="avatar-part avatar-pelvis"></span>
+                    <span class="avatar-part avatar-arm-left"></span>
+                    <span class="avatar-part avatar-arm-right"></span>
+                    <span class="avatar-part avatar-leg-left"></span>
+                    <span class="avatar-part avatar-leg-right"></span>
+                    <span class="avatar-part avatar-shin-left"></span>
+                    <span class="avatar-part avatar-shin-right"></span>
+                    <span class="avatar-part avatar-foot-left"></span>
+                    <span class="avatar-part avatar-foot-right"></span>
+                  </div>
+                  <div id="body-hotspots" class="body-hotspots" role="group" aria-label="Selecionar sistema corporal"></div>
                 </div>
-                <div id="body-hotspots" class="body-hotspots" role="group" aria-label="Selecionar sistema corporal"></div>
               </div>
-              <figcaption class="figure-caption">Modelo 3D esquemático para navegação; não representa anatomia clínica nem localiza medições.</figcaption>
+              <figcaption class="figure-caption">Modelo visual CSS com perspetiva ajustável; não é uma malha anatómica nem localiza medições clínicas.</figcaption>
             </figure>
             <div id="mission-body-systems" class="body-system-list" role="group" aria-label="Tags dos sistemas corporais">
               <p class="dataset-status">A carregar o catálogo de indicadores…</p>
@@ -1969,6 +1993,13 @@
     window.addEventListener("online", updateOfflineConnectionStatus);
     window.addEventListener("offline", updateOfflineConnectionStatus);
     initializeMissionPeriod();
+    byId("body-view-toggle").addEventListener("click", event => {
+      const button = event.currentTarget;
+      const stage = byId("body-model-stage");
+      const showSideView = stage.dataset.angle !== "side";
+      stage.dataset.angle = showSideView ? "side" : "front";
+      button.setAttribute("aria-pressed", String(showSideView));
+    });
     renderBodySystems();
     byId("demo-start").addEventListener("click", startDemo);
     byId("demo-exit").addEventListener("click", endDemo);

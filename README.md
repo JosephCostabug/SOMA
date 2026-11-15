@@ -74,9 +74,11 @@ estado de sincronização e apoio local, não uma decisão clínica.
 ## Painel web
 
 O ecrã inicial apresenta uma figura humana esquemática com tags interativas por
-sistema corporal. A figura 3D é um modelo visual para navegação; não representa
-anatomia clínica nem localiza medições no corpo. O detalhe indica cobertura ou
-leituras sintéticas e apresenta contexto, observações, próximos passos gerais e
+sistema corporal e um controlo para alternar entre vistas frontal e oblíqua. A
+profundidade e rotação são efeitos CSS; não existe uma malha 3D anatómica. A
+figura serve apenas para navegação e não localiza medições no corpo. O detalhe
+indica cobertura ou leituras sintéticas e apresenta contexto, observações,
+próximos passos gerais e
 orientação para procurar apoio. Não há classificação clínica por cor nem
 comparação com uma linha de base calculada.
 
@@ -734,8 +736,9 @@ python -m pytest backend\tests
 
 1. Inicie o serviço pelos passos de **Executar localmente** e abra
    `http://127.0.0.1:8000/`.
-2. Inicie a demonstração, selecione sistemas no mapa/lista e marque/desmarque
-   os passos do dia. Confirme que o contador atualiza e que “Terminar
+2. Alterne as vistas frontal/oblíqua e confirme que os hotspots continuam
+   selecionáveis. Inicie a demonstração, selecione sistemas no mapa/lista e
+   marque/desmarque os passos do dia. Confirme que o contador atualiza e que “Terminar
    demonstração” remove o estado temporário.
 3. Redimensione o navegador para 390, 820 e 1366 px; confirme que os cartões,
    controles e figura não ficam cortados.
