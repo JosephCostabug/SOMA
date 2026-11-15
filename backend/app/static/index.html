@@ -7,22 +7,23 @@
   <title>SOMA — Monitorização da tripulação</title>
   <style>
     :root {
-      color-scheme: light;
-      --bg: #f3f6fb;
-      --surface: #fff;
-      --surface-soft: #f7f9fd;
-      --text: #152238;
-      --muted: #52627a;
-      --border: #d8e0ec;
-      --accent: #2455c7;
-      --accent-soft: #e9f0ff;
-      --header: #101b2c;
-      --header-text: #f3f6ff;
-      --success: #157347;
-      --danger: #a52c35;
-      --body-fill: #dce5f2;
-      --body-stroke: #8fa1ba;
-      --shadow: 0 14px 40px rgba(25, 45, 80, .08);
+      color-scheme: dark;
+      --bg: #03060d;
+      --surface: #0b1733;
+      --surface-soft: #08122b;
+      --text: #eef3ff;
+      --muted: #8ea2c4;
+      --border: #1e3566;
+      --accent: #7fd4ff;
+      --accent-soft: #10265a;
+      --header: #03060d;
+      --header-text: #eef3ff;
+      --success: #2fd08a;
+      --warning: #ffc233;
+      --danger: #ff6b61;
+      --body-fill: #0d2150;
+      --body-stroke: #3a63ad;
+      --shadow: 0 16px 40px rgba(0, 0, 0, .28);
       font-family: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
       font-synthesis: none;
       text-rendering: optimizeLegibility;
@@ -31,21 +32,22 @@
     @media (prefers-color-scheme: dark) {
       :root {
         color-scheme: dark;
-        --bg: #0b1321;
-        --surface: #121f33;
-        --surface-soft: #17263d;
-        --text: #edf2fb;
-        --muted: #a9b7ce;
-        --border: #2b3c58;
-        --accent: #91b4ff;
-        --accent-soft: #1d3153;
-        --header: #070e18;
-        --header-text: #edf2fb;
-        --success: #69d6a0;
-        --danger: #ff9a9f;
-        --body-fill: #243752;
-        --body-stroke: #9bb2d1;
-        --shadow: 0 14px 40px rgba(0, 0, 0, .18);
+        --bg: #03060d;
+        --surface: #0b1733;
+        --surface-soft: #08122b;
+        --text: #eef3ff;
+        --muted: #8ea2c4;
+        --border: #1e3566;
+        --accent: #7fd4ff;
+        --accent-soft: #10265a;
+        --header: #03060d;
+        --header-text: #eef3ff;
+        --success: #2fd08a;
+        --warning: #ffc233;
+        --danger: #ff6b61;
+        --body-fill: #0d2150;
+        --body-stroke: #3a63ad;
+        --shadow: 0 16px 40px rgba(0, 0, 0, .28);
       }
     }
 
@@ -55,7 +57,7 @@
       min-width: 320px;
       min-height: 100vh;
       margin: 0;
-      background: radial-gradient(ellipse at 10% 0, rgba(36, 85, 199, .08), transparent 34rem), var(--bg);
+      background: radial-gradient(ellipse at 75% 0, rgba(19, 48, 107, .72), transparent 70rem), var(--bg);
       color: var(--text);
       font-size: 16px;
       line-height: 1.55;
@@ -721,6 +723,239 @@
       html { scroll-behavior: auto; }
       *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
     }
+
+    .site-header { border-bottom: 1px solid var(--border); background: rgba(3, 6, 13, .96); box-shadow: none; }
+    .header-inner {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+      max-width: 1840px;
+      min-height: 82px;
+      gap: 14px;
+      padding: 10px 24px;
+    }
+    .brand { grid-column: 1; grid-row: 1; }
+    .header-context { grid-column: 2; grid-row: 1; display: flex; flex-wrap: wrap; gap: 8px; }
+    .header-context[hidden] { display: none; }
+    .header-context .tag { border-color: #24427b; background: #10265a; color: var(--accent); }
+    .main-nav {
+      grid-column: 3;
+      grid-row: 1;
+      max-width: none;
+      justify-content: flex-end;
+      gap: 2px;
+      overflow: visible;
+      margin: 0;
+      padding: 0;
+    }
+    .main-nav button { min-height: 42px; border-radius: 0; padding: 8px 10px; white-space: nowrap; }
+    .main-nav button[aria-current="page"] { border-color: var(--accent); background: transparent; }
+    .header-help { position: relative; grid-column: 4; grid-row: 1; align-self: center; }
+    .header-help summary {
+      min-height: 42px;
+      border: 1px solid #71383e;
+      border-radius: 999px;
+      padding: 9px 14px;
+      background: #3a1418;
+      color: #ff8b82;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .06em;
+      list-style: none;
+      white-space: nowrap;
+    }
+    .header-help summary::-webkit-details-marker { display: none; }
+    .header-help p {
+      position: absolute;
+      top: calc(100% + 10px);
+      right: 0;
+      z-index: 20;
+      width: min(340px, 80vw);
+      margin: 0;
+      border: 1px solid #71383e;
+      border-radius: 12px;
+      padding: 14px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      color: var(--text);
+      font-size: 14px;
+    }
+    .header-meta { grid-column: 5; grid-row: 1; font-size: 12px; }
+    main { max-width: 1840px; padding: 20px 40px 32px; }
+    #view-mission {
+      display: grid;
+      grid-template-columns: minmax(340px, 520px) minmax(0, 1fr);
+      align-items: start;
+      gap: 16px 18px;
+    }
+    #view-mission > .page-heading { grid-column: 2; grid-row: 1; align-self: end; margin: 0; }
+    #view-mission > .page-heading h1 { font-size: clamp(26px, 2.4vw, 36px); }
+    #view-mission > .mission-hero { display: contents; }
+    #view-mission > .mission-hero > .body-map-panel { grid-column: 1; grid-row: 1 / span 5; }
+    #view-mission > .mission-hero > .mission-query-card { grid-column: 2; grid-row: 2; }
+    #view-mission > #body-system-detail { grid-column: 2; grid-row: 3; min-width: 0; margin: 0; }
+    #view-mission > #demo-dashboard, #view-mission > #mission-results { grid-column: 2; grid-row: 4; min-width: 0; }
+    .card, .body-system-detail { border-color: var(--border); border-radius: 15px; background: var(--surface); box-shadow: var(--shadow); }
+    .body-map-panel { padding: 18px; }
+    .body-map-heading { align-items: center; }
+    .body-map-heading h2 { color: var(--accent); font-size: 15px; letter-spacing: .14em; text-transform: uppercase; }
+    .body-map-heading p { max-width: 38ch; font-size: 12px; }
+    .body-map-heading .tag { background: #10265a; color: var(--accent); }
+    .human-figure { min-height: 400px; background: radial-gradient(ellipse at center, #10265a 0, #0b1733 55%, #08122b 100%); }
+    .demo-map-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; color: var(--muted); font-size: 11px; }
+    .demo-map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend-dot { width: 9px; height: 9px; border-radius: 50%; }
+    .legend-dot.stable { background: var(--success); }
+    .legend-dot.attention { background: var(--warning); }
+    .body-hotspot[data-demo-state="stable"], .body-hotspot[data-demo-state="stable"]:hover,
+    .body-hotspot[data-demo-state="stable"][aria-pressed="true"] { background: var(--success); color: #04210f; }
+    .body-hotspot[data-demo-state="attention"], .body-hotspot[data-demo-state="attention"]:hover,
+    .body-hotspot[data-demo-state="attention"][aria-pressed="true"] { background: var(--warning); color: #1b1608; }
+    .body-system-button { min-height: 48px; border-color: transparent; background: transparent; }
+    .body-system-button:hover, .body-system-button[aria-pressed="true"] { border-color: #31559a; background: #10265a; }
+    .body-system-code { background: #10265a; color: var(--accent); }
+    .body-system-detail { padding: 18px; }
+    .system-detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+    .system-detail-heading .eyebrow { margin-bottom: 5px; }
+    .system-detail-heading h2 { margin: 0; font-size: clamp(22px, 2.2vw, 34px); letter-spacing: .04em; }
+    .system-detail-heading p:not(.eyebrow) { margin: 8px 0 0; color: var(--muted); }
+    .system-status, .demo-status-pill {
+      flex: none;
+      border: 1px solid #785d18;
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: #3a2d0a;
+      color: var(--warning);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .08em;
+    }
+    .system-status { border-color: var(--border); background: var(--surface-soft); color: var(--muted); }
+    .body-system-detail[data-demo="true"] .system-status { border-color: #785d18; background: #3a2d0a; color: var(--warning); }
+    .system-guidance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .system-guidance { border-color: var(--border); background: var(--surface-soft); }
+    .system-guidance h3 { margin: 0; color: var(--accent); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
+    .system-guidance p { margin-bottom: 0; }
+    .mission-query-card { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 12px 16px; }
+    .mission-query-card > .eyebrow { display: none; }
+    .mission-query-card h2 { margin: 0; font-size: 16px; }
+    .demo-entry { display: flex; align-items: center; gap: 10px; margin: 0; }
+    .demo-entry p { display: none; }
+    .demo-entry .button { white-space: nowrap; }
+    .mission-access { margin: 0; border: 0; padding: 0; }
+    .mission-access summary { border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; white-space: nowrap; }
+    .mission-access[open] { grid-column: 1 / -1; width: 100%; }
+    .demo-dashboard {
+      grid-template-columns: minmax(0, 1.65fr) minmax(260px, 1fr);
+      gap: 14px;
+      margin: 0;
+    }
+    .demo-notice, .demo-heading, .demo-metrics, .demo-mission-day { grid-column: 1 / -1; }
+    .demo-notice { margin: 0; border-color: #31559a; background: #0b1733; color: var(--muted); font-size: 12px; }
+    .demo-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 2px 0; }
+    .demo-heading .eyebrow { margin-bottom: 5px; }
+    .demo-heading h2 { margin: 0; font-size: clamp(23px, 2.1vw, 32px); letter-spacing: .04em; }
+    .demo-heading p:last-child { margin: 5px 0 0; color: var(--muted); }
+    .demo-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .demo-reading-card { min-width: 0; border-color: var(--border); border-radius: 12px; padding: 14px; background: var(--surface); }
+    .demo-reading-card[data-tone="warning"] { border-color: #785d18; }
+    .demo-reading-card[data-tone="success"] { border-color: #1c7557; }
+    .demo-reading-card .demo-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .demo-reading-card small { font-size: 10px; }
+    .demo-reading-card .demo-card-state { color: var(--warning); font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+    .demo-reading-card[data-tone="success"] .demo-card-state { color: var(--success); }
+    .demo-reading-card strong { display: flex; align-items: baseline; gap: 7px; margin-top: 12px; font-size: clamp(26px, 2.7vw, 42px); }
+    .demo-reading-card strong span { color: var(--muted); font-size: 14px; font-weight: 500; }
+    .demo-reading-card p { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+    .demo-chart-card { grid-column: 1; min-width: 0; padding: 18px; }
+    .demo-chart-heading { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 10px; }
+    .demo-chart-heading .eyebrow { margin-bottom: 5px; }
+    .demo-chart-heading h3 { margin: 0; font-size: 16px; }
+    .demo-band-key { color: var(--accent); font-size: 11px; }
+    .demo-chart { display: block; width: 100%; height: auto; margin-top: 12px; overflow: visible; }
+    .demo-chart-grid line { stroke: #16264d; stroke-width: 1; }
+    .demo-chart-labels, .demo-chart > text { fill: var(--muted); font: 11px system-ui, sans-serif; }
+    .demo-chart-band { fill: rgba(77, 163, 255, .16); }
+    .demo-chart-band-label { fill: var(--accent); font: 10px system-ui, sans-serif; }
+    .demo-chart-area { fill: rgba(77, 163, 255, .18); }
+    .demo-chart-line { fill: none; stroke: #eef3ff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .demo-chart-event { stroke: var(--danger); stroke-dasharray: 4 4; }
+    .demo-chart-event-label { fill: #ff8b82; font: 10px system-ui, sans-serif; }
+    .demo-chart-current { fill: var(--warning); }
+    .demo-chart-current-label { fill: var(--warning); font: 12px system-ui, sans-serif; font-weight: 700; }
+    .demo-chart-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 10px; }
+    .demo-chart-actions > span { color: var(--muted); font-size: 12px; }
+    .demo-insights { grid-column: 2; display: grid; align-content: start; gap: 12px; }
+    .demo-insight { border-left: 4px solid var(--accent); padding: 15px 16px; }
+    .demo-insight h3 { margin: 0 0 10px; color: var(--accent); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+    .demo-insight p, .demo-insight ol { margin: 0; color: var(--text); font-size: 13px; }
+    .demo-insight ol { display: grid; gap: 7px; padding-left: 20px; }
+    .demo-actions { border-left-color: var(--success); }
+    .demo-actions h3 { color: var(--success); }
+    .demo-help { border-left-color: var(--danger); }
+    .demo-help h3 { color: #ff8b82; }
+    .demo-help p + p { margin-top: 8px; color: var(--muted); }
+    .demo-mission-day { padding: 16px 18px; }
+    .demo-mission-day-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; }
+    .demo-mission-day-heading .eyebrow { margin: 0; }
+    .demo-mission-day-heading h3 { margin: 3px 0 0; font-size: 18px; }
+    .demo-mission-day-heading > span { color: var(--muted); font-size: 12px; }
+    .demo-checklist { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .demo-task { border-color: var(--border); background: var(--surface-soft); font-size: 13px; }
+    .demo-task input { accent-color: var(--success); }
+    .demo-task-summary { margin: 8px 0 0; text-align: right; }
+    .mission-results { margin: 0; }
+    .mission-summary-card, .mission-indicator, .indicator-item, .indicator-group, .offline-queue-item { border-color: var(--border); background: var(--surface-soft); }
+    .button { border-color: #1a4fa8; background: #1a4fa8; }
+    .button.secondary { border-color: #31559a; background: #10265a; color: var(--text); }
+    footer { max-width: 1840px; padding-right: 40px; padding-left: 40px; }
+    @media (max-width: 1100px) {
+      .header-inner { grid-template-columns: minmax(0, 1fr) auto auto; }
+      .brand { grid-column: 1; grid-row: 1; }
+      .header-context { grid-column: 1 / -1; grid-row: 2; }
+      .main-nav { grid-column: 1 / -1; grid-row: 3; justify-content: flex-start; }
+      .header-help { grid-column: 2; grid-row: 1; }
+      .header-meta { grid-column: 3; grid-row: 1; }
+    }
+    @media (max-width: 900px) {
+      #view-mission { grid-template-columns: minmax(0, 1fr); }
+      #view-mission > .page-heading,
+      #view-mission > .mission-hero > .body-map-panel,
+      #view-mission > .mission-hero > .mission-query-card,
+      #view-mission > #body-system-detail,
+      #view-mission > #demo-dashboard,
+      #view-mission > #mission-results { grid-column: 1; grid-row: auto; }
+      #view-mission > .mission-hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+      #view-mission > .mission-hero > .body-map-panel { grid-row: auto; }
+    }
+    @media (max-width: 760px) {
+      main { padding: 18px 16px 28px; }
+      .header-inner { padding: 10px 16px; }
+      .demo-dashboard { grid-template-columns: minmax(0, 1fr); }
+      .demo-insights, .demo-chart-card { grid-column: 1; }
+      .demo-insights { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .demo-help { grid-column: 1 / -1; }
+    }
+    @media (max-width: 520px) {
+      main { padding: 14px 12px 24px; }
+      .header-context .tag { padding: 6px 8px; font-size: 9px; }
+      .header-meta { max-width: 112px; font-size: 10px; }
+      .header-help summary { min-height: 38px; padding: 8px 10px; font-size: 11px; }
+      .header-inner { gap: 8px; }
+      .body-map-layout { grid-template-columns: minmax(0, 1fr); }
+      .body-system-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .mission-query-card { grid-template-columns: minmax(0, 1fr); }
+      .demo-entry { justify-content: space-between; }
+      .mission-query-card .mission-access { grid-column: 1; }
+      .demo-metrics { grid-template-columns: minmax(0, 1fr); }
+      .demo-insights { grid-template-columns: minmax(0, 1fr); }
+      .demo-help { grid-column: 1; }
+      .demo-checklist { grid-template-columns: minmax(0, 1fr); }
+      .demo-heading { align-items: flex-start; flex-direction: column; }
+      .system-guidance-grid { grid-template-columns: minmax(0, 1fr); }
+      .system-detail-heading { align-items: flex-start; flex-direction: column; }
+      footer { padding-right: 12px; padding-left: 12px; }
+    }
   </style>
 </head>
 <body>
@@ -731,12 +966,22 @@
         <span class="brand-mark" aria-hidden="true">S</span>
         <span class="brand-copy"><span class="brand-name">SOMA</span><span class="brand-subtitle">Monitorização da tripulação</span></span>
       </div>
+      <div id="mission-context" class="header-context" aria-label="Contexto de missão simulado" hidden>
+        <span class="tag">DEMO · DADOS SINTÉTICOS</span>
+        <span class="tag">ASTRONAUTA A01</span>
+        <span class="tag">DIA 112</span>
+        <span class="tag">EM TRÂNSITO · ATRASO 12 MIN</span>
+      </div>
+      <nav class="main-nav" aria-label="Navegação principal">
+        <button type="button" data-view="mission" aria-current="page">Home</button>
+        <button type="button" data-view="offline">Registo offline</button>
+      </nav>
+      <details class="header-help">
+        <summary>Chamar ajuda</summary>
+        <p>Este protótipo não envia pedidos nem contacta a equipa médica. Em caso de urgência, siga o protocolo de comunicação da missão.</p>
+      </details>
       <div class="header-meta"><span class="live-dot" aria-hidden="true"></span><span id="connection-status" role="status" aria-live="polite">A aguardar acesso</span></div>
     </div>
-    <nav class="main-nav" aria-label="Navegação principal">
-      <button type="button" data-view="mission" aria-current="page">Monitorização</button>
-      <button type="button" data-view="offline">Registo offline</button>
-    </nav>
   </header>
 
   <main id="main">
@@ -786,17 +1031,10 @@
               <p class="dataset-status">A carregar o catálogo de indicadores…</p>
             </div>
           </div>
-          <section id="body-system-detail" class="body-system-detail" aria-live="polite">
-            <h3 id="body-system-detail-title">Selecione uma região ou tag</h3>
-            <p id="body-system-detail-copy">Escolha um sistema para consultar os indicadores associados.</p>
-            <div id="body-system-detail-values" class="body-system-detail-values"></div>
-            <div class="system-guidance-grid">
-              <section class="system-guidance"><h4>Contexto espacial</h4><p id="body-system-context">Sem contexto validado configurado.</p></section>
-              <section class="system-guidance"><h4>Observações</h4><p id="body-system-observation">Selecione um sistema.</p></section>
-              <section class="system-guidance"><h4>Próximo passo</h4><p id="body-system-next-step">Carregue dados ou inicie a demonstração.</p></section>
-              <section class="system-guidance"><h4>Quando pedir apoio</h4><p id="body-system-help">Siga sempre o protocolo médico da missão.</p></section>
-            </div>
-          </section>
+          <div id="demo-map-legend" class="demo-map-legend" aria-label="Estados sintéticos da demonstração" hidden>
+            <span><i class="legend-dot stable"></i> Estável · simulado</span>
+            <span><i class="legend-dot attention"></i> Atenção · simulada</span>
+          </div>
           <p id="body-map-status" class="body-map-status" role="status" aria-live="polite">Carregue um resumo autorizado para ver a cobertura observada.</p>
         </section>
         <section class="card mission-query-card" aria-labelledby="mission-query-title">
@@ -837,20 +1075,98 @@
           </details>
         </section>
       </div>
+      <section id="body-system-detail" class="body-system-detail" aria-live="polite">
+        <div class="system-detail-heading">
+          <div>
+            <p class="eyebrow">Sistema selecionado</p>
+            <h2 id="body-system-detail-title">Selecione uma região ou tag</h2>
+            <p id="body-system-detail-copy">Escolha um sistema para consultar os indicadores associados.</p>
+          </div>
+          <span id="body-system-status" class="system-status">A aguardar dados</span>
+        </div>
+        <div id="body-system-detail-values" class="body-system-detail-values"></div>
+        <div class="system-guidance-grid">
+          <section class="system-guidance"><h3>Contexto espacial</h3><p id="body-system-context">Sem contexto validado configurado.</p></section>
+          <section class="system-guidance"><h3>Observações</h3><p id="body-system-observation">Selecione um sistema.</p></section>
+          <section class="system-guidance"><h3>Próximo passo</h3><p id="body-system-next-step">Carregue dados ou inicie a demonstração.</p></section>
+          <section class="system-guidance"><h3>Quando pedir apoio</h3><p id="body-system-help">Siga sempre o protocolo médico da missão.</p></section>
+        </div>
+      </section>
       <section id="demo-dashboard" class="demo-dashboard" aria-labelledby="demo-dashboard-title" hidden>
-        <div class="notice" role="note">Demonstração com dados sintéticos — estes valores não pertencem a uma pessoa nem têm interpretação clínica.</div>
-        <section class="demo-mission-context" aria-label="Contexto de missão simulado">
-          <p><strong>Cenário simulado:</strong> dia 112 · trânsito · atraso de comunicação de 12 min.</p>
+        <div class="notice demo-notice" role="note">DEMO · valores, estados e banda de referência são sintéticos e ilustrativos; não representam uma pessoa, não são enviados nem guardados e não têm interpretação clínica.</div>
+        <div class="demo-heading">
+          <div>
+            <p class="eyebrow">Sistema em foco · demonstração</p>
+            <h2 id="demo-dashboard-title">Coração e circulação</h2>
+            <p id="demo-system-description">O coração bombeia sangue e transporta oxigénio pelo organismo.</p>
+          </div>
+          <span id="demo-status-pill" class="demo-status-pill">ATENÇÃO · SIMULADA</span>
+        </div>
+        <div id="demo-reading-cards" class="demo-metrics"></div>
+        <section id="demo-chart-card" class="card demo-chart-card" aria-labelledby="demo-trend-title">
+          <div class="demo-chart-heading">
+            <div>
+              <p class="eyebrow">Tendência ilustrativa · dados sintéticos</p>
+              <h3 id="demo-trend-title">Frequência cardíaca em repouso · últimos 30 dias</h3>
+            </div>
+            <span class="demo-band-key">Banda fictícia da linha de base</span>
+          </div>
+          <svg class="demo-chart" viewBox="0 0 680 270" role="img" aria-labelledby="demo-chart-title demo-chart-description">
+            <title id="demo-chart-title">Tendência fictícia da frequência cardíaca em repouso</title>
+            <desc id="demo-chart-description">Gráfico ilustrativo com banda de referência fictícia, marcador de evento solar simulado e valor atual de 71 batimentos por minuto.</desc>
+            <g class="demo-chart-grid">
+              <line x1="48" y1="210" x2="660" y2="210"/><line x1="48" y1="174" x2="660" y2="174"/>
+              <line x1="48" y1="138" x2="660" y2="138"/><line x1="48" y1="102" x2="660" y2="102"/>
+              <line x1="48" y1="66" x2="660" y2="66"/>
+            </g>
+            <g class="demo-chart-labels">
+              <text x="38" y="214" text-anchor="end">55</text><text x="38" y="178" text-anchor="end">60</text>
+              <text x="38" y="142" text-anchor="end">65</text><text x="38" y="106" text-anchor="end">70</text>
+              <text x="38" y="70" text-anchor="end">75</text>
+            </g>
+            <rect x="48" y="116" width="612" height="42" class="demo-chart-band"/>
+            <text x="56" y="132" class="demo-chart-band-label">banda fictícia da linha de base</text>
+            <path class="demo-chart-area" d="M48 210 L48 152 L69 159 L90 145 L111 152 L132 138 L153 145 L174 152 L195 138 L216 131 L237 145 L258 138 L279 131 L300 124 L321 131 L342 138 L363 124 L384 117 L405 124 L426 131 L447 117 L468 110 L489 117 L510 110 L531 102 L552 110 L573 102 L594 95 L615 102 L636 88 L660 95 L660 210 Z"/>
+            <polyline class="demo-chart-line" points="48,152 69,159 90,145 111,152 132,138 153,145 174,152 195,138 216,131 237,145 258,138 279,131 300,124 321,131 342,138 363,124 384,117 405,124 426,131 447,117 468,110 489,117 510,110 531,102 552,110 573,102 594,95 615,102 636,88 660,95"/>
+            <line x1="468" y1="50" x2="468" y2="210" class="demo-chart-event"/>
+            <text x="468" y="44" text-anchor="middle" class="demo-chart-event-label">evento solar · simulado</text>
+            <circle cx="660" cy="95" r="7" class="demo-chart-current"/>
+            <text x="650" y="82" text-anchor="end" class="demo-chart-current-label">hoje · 71</text>
+            <text x="48" y="238" text-anchor="middle">−30 d</text><text x="354" y="238" text-anchor="middle">−15 d</text><text x="660" y="238" text-anchor="middle">hoje</text>
+          </svg>
+          <div class="demo-chart-actions">
+            <button id="demo-log-measurement" class="button" type="button">＋ Registar medição</button>
+            <span>Entrada manual ou dispositivo</span>
+          </div>
         </section>
-        <section class="card">
-          <h2 id="demo-dashboard-title">Exemplo de check-in diário</h2>
-          <p class="dataset-status">Os cartões são gerados localmente e não são enviados nem guardados.</p>
-          <div id="demo-reading-cards" class="mission-indicators"></div>
-          <h3>Passos do dia</h3>
+        <div class="demo-insights">
+          <section class="card demo-insight demo-why">
+            <h3>Porque está a acontecer?</h3>
+            <p>Contexto fisiológico e referência HRP não configurados. Este protótipo não atribui causa espacial aos dados.</p>
+          </section>
+          <section class="card demo-insight demo-actions">
+            <h3>O que fazer agora</h3>
+            <ol>
+              <li>Compare apenas com a linha de base individual validada.</li>
+              <li>Consulte o protocolo aprovado da missão.</li>
+              <li>Registe uma nova medição se indicado pelo protocolo.</li>
+            </ol>
+          </section>
+          <section class="card demo-insight demo-help">
+            <h3>Quando pedir ajuda</h3>
+            <p>Se tiver sintomas novos, intensos ou em agravamento, siga o protocolo médico da missão.</p>
+            <p>Este ecrã não envia alertas nem contacta a equipa médica.</p>
+          </section>
+        </div>
+        <section class="card demo-mission-day" aria-labelledby="demo-mission-day-title">
+          <div class="demo-mission-day-heading">
+            <div><p class="eyebrow">Missão do dia</p><h3 id="demo-mission-day-title">0 de 3 concluídas</h3></div>
+            <span>Checklist local da demonstração</span>
+          </div>
           <div class="demo-checklist" role="group" aria-label="Checklist diário de demonstração">
-            <label class="demo-task"><input type="checkbox" data-demo-task="measurements"> Rever medições disponíveis</label>
-            <label class="demo-task"><input type="checkbox" data-demo-task="baseline"> Comparar com a linha de base pessoal</label>
-            <label class="demo-task"><input type="checkbox" data-demo-task="check-in"> Completar o check-in de sono e bem-estar</label>
+            <label class="demo-task"><input type="checkbox" data-demo-task="measurements"> Medir pressão arterial</label>
+            <label class="demo-task"><input type="checkbox" data-demo-task="baseline"> Treino resistivo</label>
+            <label class="demo-task"><input type="checkbox" data-demo-task="check-in"> Check-in diário</label>
           </div>
           <p id="demo-task-summary" class="demo-task-summary" role="status" aria-live="polite">0 de 3 passos concluídos. O progresso existe apenas nesta página.</p>
         </section>
@@ -994,12 +1310,12 @@
     const numberFormat = new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 2 });
     const formatNumber = value => value === null || value === undefined ? "—" : numberFormat.format(value);
     const labelForSystem = value => ({
-      cardiovascular: "Cardiovascular",
-      metabolic: "Metabólico",
+      cardiovascular: "Coração e circulação",
+      metabolic: "Metabolismo",
       thermoregulation: "Termorregulação",
-      recovery: "Recuperação",
+      recovery: "Sono e recuperação",
       wellbeing: "Bem-estar",
-      respiratory: "Respiratório"
+      respiratory: "Pulmões e respiração"
     })[value] || value;
     const bodySystems = [
       { key: "cardiovascular", code: "CV", description: "Indicadores de coração e circulação." },
@@ -1010,14 +1326,27 @@
       { key: "wellbeing", code: "BE", description: "Indicadores de bem-estar." }
     ];
     const demoReadings = [
-      { system: "cardiovascular", label: "Pressão arterial", value: "118/76 mmHg" },
+      { system: "cardiovascular", label: "Pressão arterial", value: "124/80 mmHg" },
       { system: "cardiovascular", label: "Frequência cardíaca", value: "71 bpm" },
       { system: "respiratory", label: "Oxigenação", value: "97%" },
       { system: "metabolic", label: "Glicemia", value: "94 mg/dL" },
       { system: "thermoregulation", label: "Temperatura corporal", value: "36,8 °C" },
-      { system: "recovery", label: "Duração do sono", value: "7,2 horas" },
+      { system: "recovery", label: "Duração do sono", value: "5,8 horas" },
       { system: "wellbeing", label: "Humor", value: "3/5" }
     ];
+    const demoMetricCards = [
+      { label: "Frequência cardíaca em repouso", value: "71", unit: "bpm", note: "+9 vs. linha de base fictícia", state: "Atenção", tone: "warning" },
+      { label: "Pressão arterial", value: "124/80", unit: "mmHg", note: "Dentro da banda fictícia", state: "Estável", tone: "success" },
+      { label: "Sono (última noite)", value: "5,8", unit: "h", note: "−1,4 h vs. linha de base fictícia", state: "Atenção", tone: "warning" }
+    ];
+    const demoMapStates = {
+      cardiovascular: "attention",
+      respiratory: "stable",
+      metabolic: "stable",
+      thermoregulation: "stable",
+      recovery: "stable",
+      wellbeing: "stable"
+    };
     const formatDate = value => {
       if (!value) return "não indicada";
       const date = new Date(value);
@@ -1053,6 +1382,7 @@
       state.indicatorFilter = "all";
       state.selectedBodySystem = null;
       state.demoMode = false;
+      byId("mission-context").hidden = true;
       resetDemoChecklist();
       byId("demo-dashboard").hidden = true;
       byId("demo-reading-cards").innerHTML = "";
@@ -1127,8 +1457,10 @@
             <span class="body-system-copy"><strong>${labelForSystem(system.key)}</strong><span>${detail}</span></span>
           </button>`;
       }).join("");
+      byId("demo-map-legend").hidden = !state.demoMode;
       byId("body-hotspots").innerHTML = sortedSystems.map(system => `
         <button class="body-hotspot body-hotspot-${system.key}" type="button"
+          data-demo-state="${state.demoMode ? demoMapStates[system.key] : "none"}"
           data-body-hotspot="${system.key}" aria-label="Selecionar ${labelForSystem(system.key)}"
           aria-pressed="${state.selectedBodySystem === system.key}">${system.code}</button>
       `).join("");
@@ -1141,12 +1473,15 @@
         byId("body-system-detail-title").textContent = "Selecione uma região ou tag";
         byId("body-system-detail-copy").textContent = "Escolha um sistema para consultar os indicadores associados.";
         byId("body-system-detail-values").innerHTML = "";
+        byId("body-system-detail").dataset.demo = "false";
+        byId("body-system-status").textContent = "A aguardar dados";
         byId("body-system-context").textContent = "Sem referência HRP aprovada associada.";
         byId("body-system-observation").textContent = "Selecione um sistema.";
         byId("body-system-next-step").textContent = "Carregue dados autorizados ou inicie a demonstração.";
         byId("body-system-help").textContent = "Siga o protocolo médico da missão.";
         return;
       }
+      byId("body-system-detail").dataset.demo = String(state.demoMode);
       byId("body-system-detail-title").textContent = labelForSystem(system.key);
       const indicators = state.indicatorCatalog.filter(item => item.body_system === system.key);
       byId("body-system-detail-copy").textContent = state.demoMode
@@ -1179,6 +1514,46 @@
         : "Consulte a tendência descritiva e o protocolo aprovado; este painel não calcula diagnóstico.";
       byId("body-system-help").textContent =
         "Perante sintomas novos, intensos ou em agravamento, contacte a equipa médica pelo protocolo da missão.";
+      byId("body-system-status").textContent = state.demoMode
+        ? system.key === "cardiovascular" ? "ATENÇÃO · SIMULADA" : "DADOS SINTÉTICOS"
+        : state.missionCoverage
+          ? observedCount
+            ? `${observedCount} COM REGISTOS`
+            : "SEM REGISTOS NO PERÍODO"
+          : "A AGUARDAR DADOS";
+      if (state.demoMode) renderDemoSystemPanel(system.key);
+    }
+
+    function renderDemoSystemPanel(systemKey) {
+      const system = bodySystems.find(item => item.key === systemKey);
+      const readings = demoReadings.filter(reading => reading.system === systemKey);
+      const cards = systemKey === "cardiovascular"
+        ? demoMetricCards
+        : readings.map(reading => ({
+          label: reading.label,
+          value: reading.value,
+          unit: "",
+          note: "Valor sintético; não representa uma pessoa.",
+          state: "SINTÉTICO",
+          tone: "neutral"
+        }));
+      byId("demo-dashboard-title").textContent = system
+        ? labelForSystem(system.key)
+        : "Visão geral da missão";
+      byId("demo-system-description").textContent = system
+        ? `${system.description} Dados exclusivamente sintéticos nesta demonstração.`
+        : "Selecione um sistema para consultar o exemplo.";
+      byId("demo-status-pill").textContent = systemKey === "cardiovascular"
+        ? "ATENÇÃO · SIMULADA"
+        : "DADOS SINTÉTICOS";
+      byId("demo-chart-card").hidden = systemKey !== "cardiovascular";
+      byId("demo-reading-cards").innerHTML = cards.map(reading => `
+        <article class="demo-reading-card" data-tone="${escapeHtml(reading.tone)}">
+          <div class="demo-card-heading"><small>SINTÉTICO</small><span class="demo-card-state">${escapeHtml(reading.state)}</span></div>
+          <strong>${escapeHtml(reading.value)}${reading.unit ? `<span>${escapeHtml(reading.unit)}</span>` : ""}</strong>
+          <p>${escapeHtml(reading.label)} · ${escapeHtml(reading.note)}</p>
+        </article>
+      `).join("");
     }
 
     function selectBodySystem(systemKey) {
@@ -1195,17 +1570,11 @@
       state.missionToken = "";
       state.selectedBodySystem = "cardiovascular";
       state.indicatorFilter = "all";
+      byId("mission-context").hidden = false;
       resetDemoChecklist();
       clearMissionDashboardData();
       byId("mission-results").hidden = true;
       byId("demo-dashboard").hidden = false;
-      byId("demo-reading-cards").innerHTML = demoReadings.map(reading => `
-        <article class="demo-reading-card">
-          <small>SINTÉTICO</small>
-          <strong>${escapeHtml(reading.value)}</strong>
-          <span>${escapeHtml(reading.label)} · ${escapeHtml(labelForSystem(reading.system))}</span>
-        </article>
-      `).join("");
       byId("demo-start").hidden = true;
       byId("demo-exit").hidden = false;
       byId("demo-status").textContent = "Demonstração ativa. Os dados ficam apenas nesta página.";
@@ -1220,6 +1589,7 @@
       document.querySelectorAll("[data-demo-task]").forEach(task => {
         task.checked = false;
       });
+      byId("demo-mission-day-title").textContent = "0 de 3 concluídas";
       byId("demo-task-summary").textContent =
         "0 de 3 passos concluídos. O progresso existe apenas nesta página.";
     }
@@ -1898,6 +2268,8 @@
       if (!task || !state.demoMode) return;
       const tasks = [...document.querySelectorAll("[data-demo-task]")];
       const completed = tasks.filter(item => item.checked).length;
+      byId("demo-mission-day-title").textContent =
+        `${completed} de ${tasks.length} concluídas`;
       byId("demo-task-summary").textContent =
         `${completed} de ${tasks.length} passos concluídos. O progresso existe apenas nesta página.`;
     });
@@ -1933,6 +2305,7 @@
         return;
       }
       state.demoMode = false;
+      byId("mission-context").hidden = true;
       resetDemoChecklist();
       byId("demo-dashboard").hidden = true;
       byId("demo-reading-cards").innerHTML = "";
@@ -2003,6 +2376,10 @@
     renderBodySystems();
     byId("demo-start").addEventListener("click", startDemo);
     byId("demo-exit").addEventListener("click", endDemo);
+    byId("demo-log-measurement").addEventListener("click", () => {
+      setView("offline");
+      byId("offline-astronaut-id").focus();
+    });
     updateOfflineConnectionStatus();
     renderOfflineQueue().catch(error => {
       byId("offline-queue-summary").textContent = `Fila local indisponível: ${error.message}`;

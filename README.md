@@ -52,11 +52,20 @@ backups têm secções próprias abaixo com configuração e limites.
 
 ## Visão operativa do painel
 
-O painel expõe uma visão de missão em etapas: catálogo de indicadores por sistema
-corporal, suporte à tendência, aviso explícito de natureza ilustrativa e resumo de
-operação/apoio ao solo para manter o contexto do tripulante sem confundir limites
-técnicos com interpretação clínica. A continuidade offline continua a ser um
-estado de sincronização e apoio local, não uma decisão clínica.
+A composição da página inicial foi aproximada da referência `soma-interface.svg`:
+tema escuro, cabeçalho com contexto de missão na demonstração, mapa corporal e
+tags selecionáveis à esquerda, detalhe do sistema, cartões de medições e
+tendência à direita, além do checklist diário. Em ecrãs menores, os painéis
+passam para uma coluna para manter a leitura e os controlos utilizáveis.
+
+O botão “Chamar ajuda” apenas explica a limitação e orienta a seguir o protocolo
+da missão; não envia mensagens. “Registar medição” abre o formulário de registo
+offline. Na demonstração, cartões, estados do mapa, gráfico de 30 dias, banda de
+referência e evento solar são fixos e sintéticos, identificados como
+ilustrativos; não representam uma pessoa, não são enviados nem guardados e não
+devem ser interpretados clinicamente. No acesso autorizado, são apresentados os
+dados observados e as tendências descritivas disponibilizadas pela API, sem
+classificação automática por cor.
 
 ## Etapas priorizadas do produto
 
@@ -78,9 +87,8 @@ sistema corporal e um controlo para alternar entre vistas frontal e oblíqua. A
 profundidade e rotação são efeitos CSS; não existe uma malha 3D anatómica. A
 figura serve apenas para navegação e não localiza medições no corpo. O detalhe
 indica cobertura ou leituras sintéticas e apresenta contexto, observações,
-próximos passos gerais e
-orientação para procurar apoio. Não há classificação clínica por cor nem
-comparação com uma linha de base calculada.
+próximos passos gerais e orientação para procurar apoio. Não há classificação
+clínica por cor nem comparação com uma linha de base calculada.
 
 O botão de demonstração abre sem credenciais e mostra valores sintéticos e um
 cenário de missão explicitamente simulado. O checklist diário é apenas
@@ -737,9 +745,11 @@ python -m pytest backend\tests
 1. Inicie o serviço pelos passos de **Executar localmente** e abra
    `http://127.0.0.1:8000/`.
 2. Alterne as vistas frontal/oblíqua e confirme que os hotspots continuam
-   selecionáveis. Inicie a demonstração, selecione sistemas no mapa/lista e
-   marque/desmarque os passos do dia. Confirme que o contador atualiza e que “Terminar
-   demonstração” remove o estado temporário.
+   selecionáveis. Inicie a demonstração e confirme o contexto da missão, os
+   cartões sintéticos e o gráfico; selecione sistemas no mapa/lista e
+   marque/desmarque os passos do dia. Confirme que o contador atualiza,
+   “Registar medição” abre o formulário offline, “Chamar ajuda” não envia
+   contacto e “Terminar demonstração” remove o estado temporário.
 3. Redimensione o navegador para 390, 820 e 1366 px; confirme que os cartões,
    controles e figura não ficam cortados.
 4. Verifique `http://127.0.0.1:8000/health` e `http://127.0.0.1:8000/docs`.
