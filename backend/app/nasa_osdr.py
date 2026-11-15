@@ -1,7 +1,9 @@
 from datetime import date, datetime, timezone
 import csv
+import hashlib
 import io
 import json
+import math
 import re
 from typing import Literal, Self
 from urllib.parse import parse_qs, quote, urlencode, urlparse
@@ -19,8 +21,17 @@ _OSDR_API_BASE_URL = "https://visualization.osdr.nasa.gov/biodata/api/v2/dataset
 _OSDR_QUERY_BASE_URL = "https://visualization.osdr.nasa.gov/biodata/api/v2/query/datasets/"
 _OSDR_STUDY_BASE_URL = "https://osdr.nasa.gov/bio/repo/data/studies"
 _MAX_RESPONSE_BYTES = 2_000_000
+_MAX_PUBLIC_CMP_BYTES = 100_000
 _REQUEST_TIMEOUT_SECONDS = 10
 _ACCESSION_PATTERN = re.compile(r"OSD-[0-9]+")
+_INSPIRATION4_CMP_ACCESSION = "OSD-575"
+_INSPIRATION4_CMP_FILE = "LSDS-8_Comprehensive_Metabolic_Panel_CMP_TRANSFORMED.csv"
+_INSPIRATION4_CMP_METRICS = (
+    ("glucose", "Glicose sérica", "mg/dL", "glucose_value_milligram_per_deciliter"),
+    ("albumin", "Albumina sérica", "g/dL", "albumin_value_gram_per_deciliter"),
+    ("creatinine", "Creatinina sérica", "mg/dL", "creatinine_value_milligram_per_deciliter"),
+    ("alt", "ALT", "U/L", "alt_value_units_per_liter"),
+)
 
 
 class OSDRMetadataError(Exception):
@@ -119,6 +130,48 @@ class OSDRDatasetFile(BaseModel):
             remote_updated_at=remote_updated_at,
             retrieved_at=datetime.now(timezone.utc),
         )
+
+
+class OSDRPublicSummaryPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    timepoint: str
+    mean: float | None
+    observed_min: float | None
+    observed_max: float | None
+    sample_count: int
+    missing_count: int
+
+
+class OSDRPublicSummaryMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    key: Literal["glucose", "albumin", "creatinine", "alt"]
+    label: str
+    unit: str
+    source_column: str
+    points: tuple[OSDRPublicSummaryPoint, ...]
+
+
+class OSDRPublicInspiration4Dataset(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    accession: Literal["OSD-575"] = "OSD-575"
+    title: str
+    study_url: str
+    source_api_url: str
+    source_file_name: str
+    source_file_url: str
+    source_file_updated_at: datetime | None
+    source_file_size_bytes: int
+    source_file_sha256: str
+    record_count: int
+    sample_count: int
+    retrieved_at: datetime
+    restricted: Literal[False] = False
+    license_status: Literal["not_verified"] = "not_verified"
+    citation: str
+    metrics: tuple[OSDRPublicSummaryMetric, ...]
 
 
 class _RejectRedirects(HTTPRedirectHandler):
@@ -487,3 +540,111 @@ def parse_osdr_csv(content: bytes) -> tuple[dict[str, str], ...]:
     if not rows:
         raise OSDRMetadataError("O ficheiro NASA OSDR não contém registos.")
     return tuple(rows)
+
+
+def fetch_osdr_inspiration4_cmp_summary() -> OSDRPublicInspiration4Dataset:
+    study = fetch_osdr_study_metadata(_INSPIRATION4_CMP_ACCESSION)
+    dataset_file, _ = fetch_osdr_dataset_file_metadata(
+        _INSPIRATION4_CMP_ACCESSION,
+        _INSPIRATION4_CMP_FILE,
+    )
+    if dataset_file.restricted is not False:
+        raise OSDRMetadataError(
+            "O ficheiro NASA OSDR não está marcado como publicamente acessível."
+        )
+    if (
+        dataset_file.file_size_bytes is None
+        or dataset_file.file_size_bytes > _MAX_PUBLIC_CMP_BYTES
+    ):
+        raise OSDRMetadataError(
+            "O ficheiro NASA OSDR excede o limite de tamanho do painel público."
+        )
+
+    content = download_osdr_csv(
+        dataset_file,
+        max_bytes=_MAX_PUBLIC_CMP_BYTES,
+    )
+    rows = parse_osdr_csv(content)
+    required_columns = {
+        "Sample Name",
+        *(column for _, _, _, column in _INSPIRATION4_CMP_METRICS),
+    }
+    if any(required_columns.difference(row) for row in rows):
+        raise OSDRMetadataError(
+            "O CSV NASA OSDR não contém as colunas CMP esperadas."
+        )
+
+    grouped_values: dict[str, dict[str, list[float]]] = {}
+    sample_names: set[str] = set()
+    for row in rows:
+        sample_name = row["Sample Name"].strip()
+        match = re.fullmatch(r".+_serum_([LR][+-]\d+)", sample_name)
+        if match is None:
+            raise OSDRMetadataError(
+                "Um registo CMP NASA OSDR não identifica um ponto temporal esperado."
+            )
+        timepoint = match.group(1)
+        sample_names.add(sample_name)
+        values_by_metric = grouped_values.setdefault(timepoint, {})
+        for key, _, _, source_column in _INSPIRATION4_CMP_METRICS:
+            raw_value = row[source_column].strip()
+            if raw_value.upper() in {"", "NA", "N/A"}:
+                continue
+            try:
+                value = float(raw_value)
+            except ValueError as error:
+                raise OSDRMetadataError(
+                    f"O valor da coluna NASA OSDR '{source_column}' não é numérico."
+                ) from error
+            if not math.isfinite(value):
+                raise OSDRMetadataError(
+                    f"O valor da coluna NASA OSDR '{source_column}' não é finito."
+                )
+            values_by_metric.setdefault(key, []).append(value)
+
+    sorted_timepoints = sorted(grouped_values, key=lambda value: int(value[1:]))
+    metrics = []
+    for key, label, unit, source_column in _INSPIRATION4_CMP_METRICS:
+        points = []
+        for timepoint in sorted_timepoints:
+            values = grouped_values[timepoint].get(key, [])
+            group_size = sum(
+                1
+                for row in rows
+                if row["Sample Name"].strip().endswith(f"_serum_{timepoint}")
+            )
+            points.append(
+                OSDRPublicSummaryPoint(
+                    timepoint=timepoint,
+                    mean=round(sum(values) / len(values), 4) if values else None,
+                    observed_min=min(values) if values else None,
+                    observed_max=max(values) if values else None,
+                    sample_count=len(values),
+                    missing_count=group_size - len(values),
+                )
+            )
+        metrics.append(
+            OSDRPublicSummaryMetric(
+                key=key,
+                label=label,
+                unit=unit,
+                source_column=source_column,
+                points=tuple(points),
+            )
+        )
+
+    return OSDRPublicInspiration4Dataset(
+        title=study.title,
+        study_url=study.study_url,
+        source_api_url=dataset_file.source_api_url,
+        source_file_name=dataset_file.file_name,
+        source_file_url=dataset_file.download_url,
+        source_file_updated_at=dataset_file.remote_updated_at,
+        source_file_size_bytes=dataset_file.file_size_bytes,
+        source_file_sha256=hashlib.sha256(content).hexdigest(),
+        record_count=len(rows),
+        sample_count=len(sample_names),
+        retrieved_at=datetime.now(timezone.utc),
+        citation=study.citation,
+        metrics=tuple(metrics),
+    )

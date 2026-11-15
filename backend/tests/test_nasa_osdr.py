@@ -6,8 +6,10 @@ import pytest
 from app.nasa_osdr import (
     OSDRDatasetFile,
     OSDRMetadataError,
+    OSDRStudyMetadata,
     download_osdr_csv,
     fetch_osdr_dataset_files,
+    fetch_osdr_inspiration4_cmp_summary,
     fetch_osdr_study_metadata,
     parse_osdr_csv,
     search_osdr_datasets,
@@ -231,6 +233,78 @@ def test_parse_osdr_csv_preserves_source_headers_and_cell_text():
             "qualifier": "<x>",
         },
     )
+
+
+def test_public_inspiration4_cmp_summary_aggregates_source_rows(monkeypatch):
+    import app.nasa_osdr as nasa_osdr
+
+    content = (
+        b"Sample Name,glucose_value_milligram_per_deciliter,"
+        b"albumin_value_gram_per_deciliter,"
+        b"creatinine_value_milligram_per_deciliter,alt_value_units_per_liter\n"
+        b"C001_serum_L-3,100,4.0,1.0,10\n"
+        b"C002_serum_L-3,120,NA,1.4,12\n"
+        b"C001_serum_R+1,110,4.2,1.2,15\n"
+    )
+    file_name = "LSDS-8_Comprehensive_Metabolic_Panel_CMP_TRANSFORMED.csv"
+    dataset_file = OSDRDatasetFile(
+        accession="OSD-575",
+        file_name=file_name,
+        file_format="csv",
+        source_api_url=(
+            "https://visualization.osdr.nasa.gov/biodata/api/v2/"
+            f"dataset/OSD-575/file/{file_name}/"
+        ),
+        download_url=(
+            "https://osdr.nasa.gov/geode-py/ws/studies/OSD-575/"
+            f"download?source=datamanager&file={file_name}"
+        ),
+        file_size_bytes=len(content),
+        restricted=False,
+        remote_updated_at=None,
+        retrieved_at=datetime.now(timezone.utc),
+    )
+    study = OSDRStudyMetadata(
+        accession="OSD-575",
+        title="Inspiration4 serum study",
+        project_identifier=None,
+        mission_name="SpaceX Inspiration4",
+        mission_start_date=None,
+        mission_end_date=None,
+        material_type="Serum",
+        identifiers=("LSDS-8", "GLDS-579"),
+        assay_technology_types=("Comprehensive Metabolic Panel",),
+        assay_platforms=("Quest Diagnostics",),
+        source_api_url="https://visualization.osdr.nasa.gov/biodata/api/v2/dataset/OSD-575/",
+        study_url="https://osdr.nasa.gov/bio/repo/data/studies/OSD-575",
+        citation="NASA OSDR, OSD-575: Inspiration4 serum study.",
+        retrieved_at=datetime.now(timezone.utc),
+    )
+    monkeypatch.setattr(nasa_osdr, "fetch_osdr_study_metadata", lambda _accession: study)
+    monkeypatch.setattr(
+        nasa_osdr,
+        "fetch_osdr_dataset_file_metadata",
+        lambda _accession, _file_name: (dataset_file, {}),
+    )
+    monkeypatch.setattr(
+        nasa_osdr,
+        "download_osdr_csv",
+        lambda _dataset_file, *, max_bytes: content,
+    )
+
+    result = fetch_osdr_inspiration4_cmp_summary()
+    glucose = next(metric for metric in result.metrics if metric.key == "glucose")
+    albumin = next(metric for metric in result.metrics if metric.key == "albumin")
+
+    assert result.record_count == 3
+    assert result.sample_count == 2
+    assert [point.timepoint for point in glucose.points] == ["L-3", "R+1"]
+    assert glucose.points[0].mean == 110
+    assert glucose.points[0].sample_count == 2
+    assert albumin.points[0].mean == 4.0
+    assert albumin.points[0].missing_count == 1
+    assert "C001" not in result.model_dump_json()
+    assert result.license_status == "not_verified"
 
 
 @pytest.mark.parametrize(

@@ -58,10 +58,12 @@ from app.nasa_osdr import (
     OSDRMetadataError,
     OSDRDatasetSearchHit,
     OSDRDatasetSearchResults,
+    OSDRPublicInspiration4Dataset,
     OSDRStudyMetadata,
     download_osdr_csv,
     fetch_osdr_dataset_file_metadata,
     fetch_osdr_dataset_files,
+    fetch_osdr_inspiration4_cmp_summary,
     fetch_osdr_study_metadata,
     parse_osdr_csv,
     search_osdr_datasets,
@@ -1032,6 +1034,26 @@ def _persist_readings(
 @app.get("/", include_in_schema=False)
 def frontend() -> FileResponse:
     return FileResponse(FilePath(__file__).parent / "static" / "index.html")
+
+
+@app.get(
+    "/api/v1/scientific-data/public/osdr/inspiration4/cmp",
+    response_model=OSDRPublicInspiration4Dataset,
+    tags=["scientific-data"],
+)
+def get_public_osdr_inspiration4_cmp(
+    response: Response,
+) -> OSDRPublicInspiration4Dataset:
+    response.headers["Cache-Control"] = (
+        "public, max-age=900, s-maxage=3600, stale-while-revalidate=86400"
+    )
+    try:
+        return fetch_osdr_inspiration4_cmp_summary()
+    except OSDRMetadataError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Não foi possível carregar o conjunto público NASA OSDR.",
+        ) from error
 
 
 @app.get("/health", tags=["health"])

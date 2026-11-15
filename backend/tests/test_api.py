@@ -32,6 +32,7 @@ from app.nasa_osdr import (
     OSDRDatasetFile,
     OSDRDatasetSearchHit,
     OSDRMetadataError,
+    OSDRPublicInspiration4Dataset,
     OSDRStudyMetadata,
 )
 from app.mission_identity import (
@@ -1232,9 +1233,40 @@ def test_frontend_is_served_from_application_root():
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "SOMA" in response.text
-    assert "Cadastrar astronauta" in response.text
-    assert "auth/challenges" in response.text
-    assert "${API}/readings" in response.text
+    assert "NASA OSDR" in response.text
+    assert "/api/v1/scientific-data/public/osdr/inspiration4/cmp" in response.text
+    assert "Cadastrar astronauta" not in response.text
+    assert "auth/challenges" not in response.text
+    assert "soma-prototype-v1" not in response.text
+
+
+def test_public_osdr_inspiration4_summary_requires_no_mission_login(monkeypatch):
+    dataset = OSDRPublicInspiration4Dataset(
+        title="Inspiration4 serum study",
+        study_url="https://osdr.nasa.gov/bio/repo/data/studies/OSD-575",
+        source_api_url="https://visualization.osdr.nasa.gov/biodata/api/v2/dataset/OSD-575/",
+        source_file_name="cmp.csv",
+        source_file_url="https://osdr.nasa.gov/geode-py/ws/studies/OSD-575/download",
+        source_file_updated_at=None,
+        source_file_size_bytes=10,
+        source_file_sha256="a" * 64,
+        record_count=0,
+        sample_count=0,
+        retrieved_at=datetime.now(timezone.utc),
+        citation="NASA OSDR, OSD-575.",
+        metrics=(),
+    )
+    monkeypatch.setattr(
+        "app.main.fetch_osdr_inspiration4_cmp_summary",
+        lambda: dataset,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/scientific-data/public/osdr/inspiration4/cmp")
+
+    assert response.status_code == 200
+    assert response.json()["accession"] == "OSD-575"
+    assert "s-maxage=3600" in response.headers["cache-control"]
 
 
 def test_readiness_requires_operational_bootstrap_and_database():

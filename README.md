@@ -20,18 +20,23 @@ Define `HEALTH_DB_PATH` para escolher outro caminho.
 
 ## Painel web
 
-O painel mantém o mapa corporal, a navegação e os fluxos do HTML de referência,
-e está temporariamente em modo de protótipo aberto, sem cadastro nem login.
-Medições, estado corporal, eventos e checklist são demonstrativos; as medidas
-registradas são guardadas apenas no navegador e não são enviadas à API. O modo
-de autenticação e a conexão real com dados da missão precisam ser reativados
-antes de qualquer uso operacional. Limiares ilustrativos não são critérios
-médicos.
+O painel é de consulta pública e não apresenta telas de login ou cadastro.
+Mostra dados agregados obtidos diretamente do NASA OSDR no pedido:
+OSD-575 (Inspiration4), painel metabólico sérico. Inclui glicose, albumina,
+creatinina e ALT nas unidades da fonte, agrupadas pelos pontos de recolha do
+ficheiro. A aplicação não guarda o CSV nem converte estes resultados em
+medições de astronautas, sinais vitais, alertas ou limites clínicos.
+
+O acesso público é limitado ao endpoint de leitura do conjunto NASA indicado
+abaixo. Os restantes endpoints de leituras, alertas, importação científica e
+sincronização continuam a exigir autenticação e permissões. A licença
+específica do ficheiro OSD-575 não está confirmada; consulte a citação,
+versão e termos na página oficial antes de reutilizar ou redistribuir dados.
 
 O deploy de demonstração no Vercel usa o entrypoint Python em `main.py`.
 Como o SQLite em `/tmp` não é persistente e o ambiente publicado não tem
-bootstrap de missão, este deploy serve apenas o protótipo e as rotas públicas;
-não use para guardar nem consultar dados reais de saúde.
+bootstrap de missão, este deploy serve a experiência pública NASA e as rotas
+públicas; não use para guardar nem consultar dados reais de saúde.
 
 ## Backup da base de dados
 
@@ -74,6 +79,9 @@ recuperação; restaurações periódicas e medidas de RPO/RTO continuam necess�
 - `POST /api/v1/auth/refresh` — roda um refresh token de uso único.
 - `POST /api/v1/auth/revoke` — revoga a família associada ao refresh token.
 - `GET /api/v1/indicators` — indicadores, unidades e limites técnicos de entrada.
+- `GET /api/v1/scientific-data/public/osdr/inspiration4/cmp` — resumo agregado
+  dos dados do ficheiro público CMP do estudo NASA OSD-575; não requer login,
+  não inclui identificadores de amostra e não alimenta leituras/alertas.
 - `POST /api/v1/scientific-data/osdr/studies/{accession}/refresh` — consulta e
   guarda somente metadados públicos do NASA OSDR (requer
   `scientific-data:sync` explicitamente delegado).
@@ -214,8 +222,11 @@ esperada ou está em falta: a cadência de recolha ainda não está definida.
 O resumo operacional filtra pela hora de recepção e apresenta as contagens
 válidas por indicador e origem. `declared_origin` aceita `manual`, `simulated`
 ou `nasa`; é uma declaração fornecida pelo emissor, não prova de proveniência.
-O conector OSDR cataloga metadados e não verifica nem importa medições
-biomédicas. As rejeições e conflitos guardam apenas astronauta (quando
+O conector OSDR cataloga metadados e importa explicitamente ficheiros CSV
+públicos autorizados; o endpoint público do painel resume somente quatro
+colunas do CMP OSD-575 em memória e não persiste os dados. Nenhum destes dados
+é inserido em `health_readings` ou usado por alertas. As rejeições e conflitos
+guardam apenas astronauta (quando
 identificável), origem declarada, resultado e instante; o payload biométrico
 inválido não é copiado para o registo de auditoria. Dados preexistentes sem
 `received_at` mantêm esse instante desconhecido e são contabilizados
@@ -239,13 +250,23 @@ citação e versão do parser. As linhas analisadas mantêm nomes de coluna e
 valores de texto exatamente; a unidade não é convertida (`normalization_status:
 not_performed`) e citação/licença continuam `not_verified`.
 
-Os registos científicos são consultados pelos endpoints próprios e nunca são
-inseridos em `health_readings`, associados automaticamente a um astronauta ou
-usados por alertas. A transferência pública do ficheiro não prova direitos de
+Os registos científicos importados são consultados pelos endpoints próprios e
+nunca são inseridos em `health_readings`, associados automaticamente a um
+astronauta ou usados por alertas. O endpoint público do painel obtém o ficheiro
+OSD-575 em cada atualização, devolve apenas médias e intervalos observados por
+ponto temporal e não persiste o CSV nem as linhas de origem. A transferência
+pública do ficheiro não prova direitos de
 redistribuição; obter e rever a citação versionada e os termos do ficheiro
 antes de publicar ou redistribuir. OSD-575 contém amostras séricas e painéis
 metabólicos/imunes/cardiovasculares, não uma série de frequência cardíaca ou
 pressão arterial.
+
+O resumo público usa o ficheiro `LSDS-8_Comprehensive_Metabolic_Panel_CMP_TRANSFORMED.csv`
+e as colunas de origem de glicose (`mg/dL`), albumina (`g/dL`), creatinina
+(`mg/dL`) e ALT (`U/L`). Agrupa por sufixo do nome de amostra, ignora somente
+valores vazios, `NA` e `N/A`, e reporta a contagem de valores disponíveis e em
+falta. Os identificadores de amostra não são devolvidos. A licença específica
+permanece `not_verified`; esta vista é descritiva, histórica e não clínica.
 
 Endpoints (todos requerem identidade de utilizador e permissões explicitamente
 delegadas):

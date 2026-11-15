@@ -1,8 +1,8 @@
 # NASA OSDR e Inspiration4: levantamento inicial
 
-**Estado:** levantamento documental e conector limitado a metadados públicos;
-nenhum arquivo científico ou dado biomédico foi copiado para o repositório.
-**Consultado em:** 2026-11-14.
+**Estado:** levantamento documental e vista pública agregada do CSV CMP OSD-575;
+nenhum CSV ou registo bruto guardado no repositório ou na base de dados.
+**Consultado em:** 2026-11-15.
 **Objetivo:** identificar dados e referências reutilizáveis para pesquisa e
 contexto, sem os tratar como limites clínicos nem como telemetria operacional.
 
@@ -115,6 +115,44 @@ reutilizar/redistribuir os dados associados. A normalização de unidades e
 formatos além de CSV ainda não está implementada; confirmar também versão,
 atribuição exigida e semântica de cada variável antes de utilização científica.
 
+### Vista pública usada pelo frontend
+
+O painel web obtém, sob pedido, o ficheiro
+`LSDS-8_Comprehensive_Metabolic_Panel_CMP_TRANSFORMED.csv` do estudo OSD-575.
+A API oficial consultada em 2026-11-15 indicou 8.506 bytes e
+`restricted: false`; o endpoint verifica novamente esses metadados e impõe
+um limite de 100.000 bytes antes de descarregar. O URL de origem guardado no
+código é o URL estável de download do NASA OSDR, não o URL temporário de
+redirecionamento.
+
+A rota pública
+`GET /api/v1/scientific-data/public/osdr/inspiration4/cmp` resume em memória
+quatro colunas do ficheiro:
+
+| Chave da interface | Coluna de origem | Unidade apresentada |
+|---|---|---|
+| Glicose sérica | `glucose_value_milligram_per_deciliter` | mg/dL |
+| Albumina sérica | `albumin_value_gram_per_deciliter` | g/dL |
+| Creatinina sérica | `creatinine_value_milligram_per_deciliter` | mg/dL |
+| ALT | `alt_value_units_per_liter` | U/L |
+
+As linhas são agrupadas pelos rótulos temporais do campo `Sample Name`
+(`L-92`, `L-44`, `L-3`, `R+1`, `R+45`, `R+82`, `R+194`). A resposta contém
+média, mínimo, máximo e contagens de valores numéricos/em falta por ponto; não
+inclui nomes/identificadores de amostra, nem guarda o CSV ou linhas na SQLite.
+O SHA-256 e a data de atualização da NASA são devolvidos para proveniência. A
+rota declara `Cache-Control` público, mas não cria cache persistente local.
+
+Esta escolha usa efetivamente resultados publicados pela NASA, mas não
+transforma amostras em tempo real: são medições laboratoriais séricas
+históricas de uma missão de três dias. A agregação não é uma linha de base
+clínica e não alimenta leituras, alertas ou decisões operacionais. A NASA
+indicou o ficheiro como não restrito, mas a licença específica permanece
+`not_verified`; a vista liga à página oficial para consulta da citação e dos
+termos da versão. A FAQ OSDR recomenda a citação fornecida pelo botão da página
+do estudo e o crédito institucional “Data are courtesy of the NASA Open
+Science Data Repository”.
+
 ### Gate para formatos e mapeamentos científicos
 
 Uma verificação dos metadados oficiais de ficheiros confirma que a extensão
@@ -127,7 +165,8 @@ indica diferentes tipos de conteúdo, não uma semântica uniforme:
 | OSD-569 `GLDS-561_long-readRNAseq_Direct_RNA_seq_Gene_Expression_Processed.xlsx` | Categoria `long read RNA-Seq`, 123.312.037 bytes, `restricted: false` | XLSX de expressão génica não é um dataset de sinais vitais e fica fora da ingestão tabular atual. |
 
 Os tamanhos e categorias acima vêm da API oficial de metadata por ficheiro,
-consultada em 2026-11-15; os conteúdos não foram descarregados nem importados.
+consultada em 2026-11-15; os conteúdos desses ficheiros não foram descarregados
+nem importados.
 O `restricted: false` indica o estado apresentado pelo catálogo, não uma licença
 de redistribuição. O endpoint deve continuar a rejeitar XLSX com `415` até
 existir um parser de workbook que preserve folhas, cabeçalhos, tipos/valores de
