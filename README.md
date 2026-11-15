@@ -14,8 +14,24 @@ uvicorn app.main:app --reload --app-dir backend
 ```
 
 A documentação interativa da API fica disponível em `http://127.0.0.1:8000/docs`.
+O painel web fica disponível em `http://127.0.0.1:8000/`.
 Por omissão, a base de dados é criada em `data/health_monitoring.sqlite3`.
 Define `HEALTH_DB_PATH` para escolher outro caminho.
+
+## Painel web
+
+O painel mantém o mapa corporal, a navegação e os fluxos do HTML de referência,
+e está temporariamente em modo de protótipo aberto, sem cadastro nem login.
+Medições, estado corporal, eventos e checklist são demonstrativos; as medidas
+registradas são guardadas apenas no navegador e não são enviadas à API. O modo
+de autenticação e a conexão real com dados da missão precisam ser reativados
+antes de qualquer uso operacional. Limiares ilustrativos não são critérios
+médicos.
+
+O deploy de demonstração no Vercel usa o entrypoint Python em `main.py`.
+Como o SQLite em `/tmp` não é persistente e o ambiente publicado não tem
+bootstrap de missão, este deploy serve apenas o protótipo e as rotas públicas;
+não use para guardar nem consultar dados reais de saúde.
 
 ## Backup da base de dados
 

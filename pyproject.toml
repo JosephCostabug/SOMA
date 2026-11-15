@@ -1,0 +1,13 @@
+[project]
+name = "soma-health-monitoring"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "numpy>=2.0,<3.0",
+    "pandas>=2.2,<4.0",
+    "PyJWT[crypto]>=2.10,<3.0",
+]
+
+[tool.vercel]
+entrypoint = "main:app"

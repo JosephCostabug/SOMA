@@ -7,6 +7,7 @@ import math
 import os
 import secrets
 import sqlite3
+from pathlib import Path as FilePath
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
@@ -17,6 +18,7 @@ from fastapi.exception_handlers import (
     request_validation_exception_handler,
 )
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse
 from jwt.exceptions import InvalidKeyError, InvalidTokenError
 
 from app.analysis import summarize_readings
@@ -1025,6 +1027,11 @@ def _persist_readings(
     if sync_batch is not None:
         acknowledgements.sort(key=lambda item: item.sequence_number)
     return records, acknowledgements, delivery_batch_id, earth_delivery_status
+
+
+@app.get("/", include_in_schema=False)
+def frontend() -> FileResponse:
+    return FileResponse(FilePath(__file__).parent / "static" / "index.html")
 
 
 @app.get("/health", tags=["health"])

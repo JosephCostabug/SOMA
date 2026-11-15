@@ -1225,6 +1225,18 @@ def test_indicator_catalog_includes_blood_oxygen():
     assert oxygen["technical_validation_range"] == [0, 100]
 
 
+def test_frontend_is_served_from_application_root():
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "SOMA" in response.text
+    assert "Cadastrar astronauta" in response.text
+    assert "auth/challenges" in response.text
+    assert "${API}/readings" in response.text
+
+
 def test_readiness_requires_operational_bootstrap_and_database():
     with TestClient(app) as client:
         ready = client.get("/ready")
