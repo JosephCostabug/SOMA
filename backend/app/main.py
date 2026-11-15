@@ -84,6 +84,8 @@ from app.schemas import (
     Metric,
     MonitoringAlert,
     MonitoringAlertAcknowledgement,
+    MonitoringAlertApproval,
+    MonitoringAlertApprovalRequest,
     MonitoringAlertHistory,
     MonitoringAlertRule,
     MonitoringAlertRuleAudit,
@@ -457,7 +459,7 @@ def seed_monitoring_alert_rules(
                 INSERT OR IGNORE INTO monitoring_alert_rules (
                     mission_id, rule_id, version, rule_json, active, updated_by,
                     updated_at
-                ) VALUES (?, ?, ?, ?, 1, 'mission-bootstrap', ?)
+                ) VALUES (?, ?, ?, ?, 0, 'mission-bootstrap', ?)
                 """,
                 (mission_id, rule.rule_id, rule.version, serialized_rule, changed_at),
             )
@@ -468,7 +470,7 @@ def seed_monitoring_alert_rules(
                         mission_id, rule_id, version, action, actor_id, changed_at,
                         previous_active, current_active, previous_rule_json,
                         current_rule_json
-                    ) VALUES (?, ?, ?, 'provisioned', 'mission-bootstrap', ?, NULL, 1,
+                    ) VALUES (?, ?, ?, 'provisioned', 'mission-bootstrap', ?, NULL, 0,
                               NULL, ?)
                     """,
                     (mission_id, rule.rule_id, rule.version, changed_at, serialized_rule),
@@ -482,9 +484,14 @@ def _load_active_monitoring_alert_rules(
     try:
         rows = connection.execute(
             """
-            SELECT rule_json FROM monitoring_alert_rules
-            WHERE mission_id = ? AND active = 1
-            ORDER BY rule_id
+            SELECT rules.rule_json, approvals.approval_json
+            FROM monitoring_alert_rules AS rules
+            LEFT JOIN monitoring_alert_rule_approvals AS approvals
+                ON approvals.mission_id = rules.mission_id
+                AND approvals.rule_id = rules.rule_id
+                AND approvals.rule_version = rules.version
+            WHERE rules.mission_id = ? AND rules.active = 1
+            ORDER BY rules.rule_id
             """,
             (mission_id,),
         ).fetchall()
@@ -494,10 +501,25 @@ def _load_active_monitoring_alert_rules(
             detail="Não foi possível carregar as regras ativas de monitorização.",
         ) from error
     try:
-        return tuple(
-            MonitoringAlertRule.model_validate_json(row["rule_json"])
-            for row in rows
-        )
+        approved_rules = []
+        for row in rows:
+            rule = MonitoringAlertRule.model_validate_json(row["rule_json"])
+            if row["approval_json"] is None:
+                raise ValueError(f"A regra ativa {rule.rule_id} não tem aprovação.")
+            approval = MonitoringAlertApproval.model_validate_json(
+                row["approval_json"]
+            )
+            if (
+                approval.status != "approved"
+                or approval.approved_rule_version != rule.version
+                or "operational" not in approval.scope
+            ):
+                raise ValueError(
+                    f"A regra ativa {rule.rule_id} não tem aprovação operacional "
+                    "para a versão atual."
+                )
+            approved_rules.append(rule)
+        return tuple(approved_rules)
     except (TypeError, ValueError) as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -505,16 +527,19 @@ def _load_active_monitoring_alert_rules(
         ) from error
 
 
-def _require_alert_configuration_access(
+def _require_alert_mission_permission(
     principal: CurrentPrincipal,
     request: Request,
+    *,
+    permission: str,
+    action: str,
 ) -> str:
     if principal.actor_type != "user":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="A gestão de regras requer uma identidade de utilizador.",
+            detail=f"{action} requer uma identidade de utilizador.",
         )
-    require_permission(principal, "alerts:configure")
+    require_permission(principal, permission)
     bootstrap: MissionIdentityBootstrap | None = getattr(
         request.app.state,
         "identity_bootstrap",
@@ -540,9 +565,33 @@ def _require_alert_configuration_access(
     if not mission_astronaut_ids <= principal.astronaut_ids:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="A gestão de regras requer escopo sobre todos os astronautas da missão.",
+            detail=f"{action} requer escopo sobre todos os astronautas da missão.",
         )
     return bootstrap.base_configuration.mission.mission_id
+
+
+def _require_alert_configuration_access(
+    principal: CurrentPrincipal,
+    request: Request,
+) -> str:
+    return _require_alert_mission_permission(
+        principal,
+        request,
+        permission="alerts:configure",
+        action="A gestão de regras",
+    )
+
+
+def _require_alert_approval_access(
+    principal: CurrentPrincipal,
+    request: Request,
+) -> str:
+    return _require_alert_mission_permission(
+        principal,
+        request,
+        permission="alerts:approve",
+        action="A aprovação de regras",
+    )
 
 
 def _serialize_reading(row: sqlite3.Row) -> HealthReading:
@@ -1034,6 +1083,14 @@ def _persist_readings(
 @app.get("/", include_in_schema=False)
 def frontend() -> FileResponse:
     return FileResponse(FilePath(__file__).parent / "static" / "index.html")
+
+
+@app.get("/service-worker.js", include_in_schema=False)
+def service_worker() -> FileResponse:
+    return FileResponse(
+        FilePath(__file__).parent / "static" / "service-worker.js",
+        media_type="text/javascript",
+    )
 
 
 @app.get(
@@ -2225,13 +2282,86 @@ def revoke_authentication_tokens(
     return {"status": "revoked"}
 
 
+ILLUSTRATIVE_CLINICAL_THRESHOLDS = {
+    "status": "illustrative",
+    "source_reference": (
+        "Sem fonte clínica validada neste deployment; os valores são ilustrativos "
+        "e não constituem diagnóstico ou critério de aptidão."
+    ),
+    "minimum_value": None,
+    "maximum_value": None,
+}
+
+INDICATOR_BODY_SYSTEMS = {
+    Metric.SYSTOLIC_BLOOD_PRESSURE: "cardiovascular",
+    Metric.DIASTOLIC_BLOOD_PRESSURE: "cardiovascular",
+    Metric.HEART_RATE: "cardiovascular",
+    Metric.BLOOD_GLUCOSE: "metabolic",
+    Metric.BODY_TEMPERATURE: "thermoregulation",
+    Metric.SLEEP_DURATION: "recovery",
+    Metric.MOOD: "wellbeing",
+    Metric.BLOOD_OXYGEN: "respiratory",
+}
+
+INDICATOR_DISPLAY_NAMES = {
+    Metric.SYSTOLIC_BLOOD_PRESSURE: "Systolic blood pressure",
+    Metric.DIASTOLIC_BLOOD_PRESSURE: "Diastolic blood pressure",
+    Metric.HEART_RATE: "Heart rate",
+    Metric.BLOOD_GLUCOSE: "Blood glucose",
+    Metric.BODY_TEMPERATURE: "Body temperature",
+    Metric.SLEEP_DURATION: "Sleep duration",
+    Metric.MOOD: "Mood",
+    Metric.BLOOD_OXYGEN: "Blood oxygen",
+}
+
+INDICATOR_SORT_ORDER = {
+    Metric.SYSTOLIC_BLOOD_PRESSURE: 1,
+    Metric.DIASTOLIC_BLOOD_PRESSURE: 2,
+    Metric.HEART_RATE: 3,
+    Metric.BLOOD_GLUCOSE: 4,
+    Metric.BODY_TEMPERATURE: 5,
+    Metric.SLEEP_DURATION: 6,
+    Metric.MOOD: 7,
+    Metric.BLOOD_OXYGEN: 8,
+}
+
+INDICATOR_MISSION_CONTEXT = {
+    Metric.SYSTOLIC_BLOOD_PRESSURE: "Pressão arterial sistólica em contexto de carga cardiovascular e recuperação.",
+    Metric.DIASTOLIC_BLOOD_PRESSURE: "Pressão arterial diastólica para acompanhamento da perfusão e do equilíbrio cardiovascular.",
+    Metric.HEART_RATE: "Frequência cardíaca para tendência de esforço, recuperação e estabilidade operativa.",
+    Metric.BLOOD_GLUCOSE: "Glicemia em contexto de energia, jejum e recuperação metabólica.",
+    Metric.BODY_TEMPERATURE: "Temperatura corporal para controlo térmico e resposta a esforço ou ambiente.",
+    Metric.SLEEP_DURATION: "Duração do sono para recuperação, cargas cognitivas e rendimento operacional.",
+    Metric.MOOD: "Humor e estado de bem-estar para apoio de tripulação e resiliência psicossocial.",
+    Metric.BLOOD_OXYGEN: "Oxigenação para suporte respiratório e estabilidade de rendimento em ambiente espacial.",
+}
+
+INDICATOR_GROUND_SUPPORT = {
+    Metric.SYSTOLIC_BLOOD_PRESSURE: "Verificar tendência com apoio ao solo antes de decidir qualquer ação de carga ou recuperação.",
+    Metric.DIASTOLIC_BLOOD_PRESSURE: "Conferir padrões de recuperação e contexto operacional antes de interpretação clínica.",
+    Metric.HEART_RATE: "Usar a tendência e contexto de esforço para apoiar a decisão de controlo e recuperação do solo.",
+    Metric.BLOOD_GLUCOSE: "Comparar com contexto de refeição/jejum e tendência para apoiar a decisão de suporte ao solo.",
+    Metric.BODY_TEMPERATURE: "Conferir variação ao longo do tempo e ambiente antes de qualquer resposta operativa.",
+    Metric.SLEEP_DURATION: "Comparar com ciclos de descanso e carga de missão para apoio ao solo.",
+    Metric.MOOD: "Usar como sinal de bem-estar e resiliência no contexto de apoio ao solo do tripulante.",
+    Metric.BLOOD_OXYGEN: "Confirmar estabilidade respiratória e tendência antes de qualquer escalonamento operacional.",
+}
+
+
 @app.get("/api/v1/indicators", tags=["readings"])
 def list_indicators() -> list[dict[str, object]]:
     return [
         {
             "metric": metric.value,
+            "display_name": INDICATOR_DISPLAY_NAMES[metric],
+            "sort_order": INDICATOR_SORT_ORDER[metric],
             "unit": METRIC_UNITS[metric],
             "technical_validation_range": TECHNICAL_LIMITS[metric],
+            "body_system": INDICATOR_BODY_SYSTEMS[metric],
+            "trend_supported": True,
+            "monitoring_focus": INDICATOR_MISSION_CONTEXT[metric],
+            "ground_support_note": INDICATOR_GROUND_SUPPORT[metric],
+            "clinical_thresholds": dict(ILLUSTRATIVE_CLINICAL_THRESHOLDS),
         }
         for metric in Metric
     ]
@@ -2779,10 +2909,15 @@ def list_monitoring_alert_rules(
         ).fetchone()[0]
         rows = connection.execute(
             """
-            SELECT rule_json, active, updated_by, updated_at
-            FROM monitoring_alert_rules
-            WHERE mission_id = ?
-            ORDER BY rule_id
+            SELECT rules.rule_json, rules.active, rules.updated_by, rules.updated_at,
+                   approvals.approval_json
+            FROM monitoring_alert_rules AS rules
+            LEFT JOIN monitoring_alert_rule_approvals AS approvals
+                ON approvals.mission_id = rules.mission_id
+                AND approvals.rule_id = rules.rule_id
+                AND approvals.rule_version = rules.version
+            WHERE rules.mission_id = ?
+            ORDER BY rules.rule_id
             LIMIT ? OFFSET ?
             """,
             (mission_id, limit, offset),
@@ -2800,6 +2935,13 @@ def list_monitoring_alert_rules(
                     active=bool(row["active"]),
                     updated_by=row["updated_by"],
                     updated_at=datetime.fromisoformat(row["updated_at"]),
+                    approval=(
+                        MonitoringAlertApproval.model_validate_json(
+                            row["approval_json"]
+                        )
+                        if row["approval_json"] is not None
+                        else MonitoringAlertApproval()
+                    ),
                 )
                 for row in rows
             ],
@@ -2861,21 +3003,7 @@ def upsert_monitoring_alert_rule(
             next_version = existing["version"] + 1
             previous_rule_json = existing["rule_json"]
             previous_active = existing["active"]
-            action = "reactivated" if not existing["active"] else "updated"
-
-        if existing is None or not existing["active"]:
-            active_count = connection.execute(
-                """
-                SELECT COUNT(*) FROM monitoring_alert_rules
-                WHERE mission_id = ? AND active = 1
-                """,
-                (mission_id,),
-            ).fetchone()[0]
-            if active_count >= MAX_ACTIVE_MONITORING_ALERT_RULES:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="A missão já atingiu o máximo de regras ativas.",
-                )
+            action = "updated"
 
         updated_rule = MonitoringAlertRule(
             rule_id=rule_id,
@@ -2891,11 +3019,11 @@ def upsert_monitoring_alert_rule(
             """
             INSERT INTO monitoring_alert_rules (
                 mission_id, rule_id, version, rule_json, active, updated_by, updated_at
-            ) VALUES (?, ?, ?, ?, 1, ?, ?)
+            ) VALUES (?, ?, ?, ?, 0, ?, ?)
             ON CONFLICT (mission_id, rule_id) DO UPDATE SET
                 version = excluded.version,
                 rule_json = excluded.rule_json,
-                active = 1,
+                active = 0,
                 updated_by = excluded.updated_by,
                 updated_at = excluded.updated_at
             """,
@@ -2914,7 +3042,7 @@ def upsert_monitoring_alert_rule(
                 mission_id, rule_id, version, action, actor_id, changed_at,
                 previous_active, current_active, previous_rule_json,
                 current_rule_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 mission_id,
@@ -2924,6 +3052,7 @@ def upsert_monitoring_alert_rule(
                 principal.subject,
                 changed_at_iso,
                 previous_active,
+                0,
                 previous_rule_json,
                 current_rule_json,
             ),
@@ -2940,9 +3069,10 @@ def upsert_monitoring_alert_rule(
         ) from error
     return MonitoringAlertRuleRecord(
         rule=updated_rule,
-        active=True,
+        active=False,
         updated_by=principal.subject,
         updated_at=changed_at,
+        approval=MonitoringAlertApproval(),
     )
 
 

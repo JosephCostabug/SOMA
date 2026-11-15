@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import os
 import sqlite3
 from pathlib import Path
@@ -372,6 +373,27 @@ def initialize_database() -> None:
             )
             """
         )
+        approval_table_exists = connection.execute(
+            """
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'table' AND name = 'monitoring_alert_rule_approvals'
+            """
+        ).fetchone() is not None
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS monitoring_alert_rule_approvals (
+                mission_id TEXT NOT NULL,
+                rule_id TEXT NOT NULL,
+                rule_version INTEGER NOT NULL CHECK (rule_version >= 1),
+                approval_json TEXT NOT NULL,
+                scope_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (mission_id, rule_id, rule_version),
+                FOREIGN KEY (mission_id, rule_id)
+                    REFERENCES monitoring_alert_rules (mission_id, rule_id)
+            )
+            """
+        )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS monitoring_alert_rule_changes (
@@ -382,7 +404,7 @@ def initialize_database() -> None:
                 action TEXT NOT NULL CHECK (
                     action IN (
                         'provisioned', 'created', 'updated',
-                        'reactivated', 'deactivated'
+                        'reactivated', 'deactivated', 'approved', 'activated'
                     )
                 ),
                 actor_id TEXT NOT NULL,
@@ -394,12 +416,90 @@ def initialize_database() -> None:
             )
             """
         )
+        audit_table_sql = connection.execute(
+            """
+            SELECT sql FROM sqlite_master
+            WHERE type = 'table' AND name = 'monitoring_alert_rule_changes'
+            """
+        ).fetchone()[0]
+        if "'approved'" not in audit_table_sql:
+            connection.execute("DROP INDEX IF EXISTS idx_alert_rule_changes_mission_time")
+            connection.execute(
+                "ALTER TABLE monitoring_alert_rule_changes "
+                "RENAME TO monitoring_alert_rule_changes_legacy"
+            )
+            connection.execute(
+                """
+                CREATE TABLE monitoring_alert_rule_changes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mission_id TEXT NOT NULL,
+                    rule_id TEXT NOT NULL,
+                    version INTEGER NOT NULL CHECK (version >= 1),
+                    action TEXT NOT NULL CHECK (
+                        action IN (
+                            'provisioned', 'created', 'updated',
+                            'reactivated', 'deactivated', 'approved', 'activated'
+                        )
+                    ),
+                    actor_id TEXT NOT NULL,
+                    changed_at TEXT NOT NULL,
+                    previous_active INTEGER CHECK (previous_active IN (0, 1)),
+                    current_active INTEGER NOT NULL CHECK (current_active IN (0, 1)),
+                    previous_rule_json TEXT,
+                    current_rule_json TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO monitoring_alert_rule_changes (
+                    id, mission_id, rule_id, version, action, actor_id, changed_at,
+                    previous_active, current_active, previous_rule_json,
+                    current_rule_json
+                )
+                SELECT id, mission_id, rule_id, version, action, actor_id, changed_at,
+                       previous_active, current_active, previous_rule_json,
+                       current_rule_json
+                FROM monitoring_alert_rule_changes_legacy
+                """
+            )
+            connection.execute("DROP TABLE monitoring_alert_rule_changes_legacy")
         connection.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_alert_rule_changes_mission_time
             ON monitoring_alert_rule_changes (mission_id, changed_at, id)
             """
         )
+        if not approval_table_exists:
+            changed_at = datetime.now(timezone.utc).isoformat()
+            legacy_active_rules = connection.execute(
+                """
+                SELECT mission_id, rule_id, version, rule_json
+                FROM monitoring_alert_rules
+                WHERE active = 1
+                """
+            ).fetchall()
+            for mission_id, rule_id, version, rule_json in legacy_active_rules:
+                connection.execute(
+                    """
+                    UPDATE monitoring_alert_rules
+                    SET active = 0, updated_by = 'system:approval-required',
+                        updated_at = ?
+                    WHERE mission_id = ? AND rule_id = ? AND version = ? AND active = 1
+                    """,
+                    (changed_at, mission_id, rule_id, version),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO monitoring_alert_rule_changes (
+                        mission_id, rule_id, version, action, actor_id, changed_at,
+                        previous_active, current_active, previous_rule_json,
+                        current_rule_json
+                    ) VALUES (?, ?, ?, 'deactivated', 'system:approval-required',
+                              ?, 1, 0, ?, ?)
+                    """,
+                    (mission_id, rule_id, version, changed_at, rule_json, rule_json),
+                )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS provisioned_mission_delegations (

@@ -96,6 +96,7 @@ def _create_bootstrap_file(
     path,
     monitoring_alert_rules=(),
     enable_alert_configuration=False,
+    enable_alert_approval=False,
     enable_alert_acknowledgement=False,
     enable_offline_authentication=False,
     enable_scientific_data=False,
@@ -104,6 +105,8 @@ def _create_bootstrap_file(
     mission_start = now - timedelta(days=30)
     mission_end = now + timedelta(days=365)
     alert_permissions = {"alerts:configure"} if enable_alert_configuration else set()
+    if enable_alert_approval:
+        alert_permissions.add("alerts:approve")
     if enable_alert_acknowledgement:
         alert_permissions.add("alerts:acknowledge")
     scientific_data_permissions = (
@@ -335,6 +338,32 @@ def _authorization_headers(
     finally:
         connection.close()
     return {"Authorization": f"Bearer {token}"}
+
+
+def _approve_and_activate_test_rule(client, rule_id, version):
+    approval = client.post(
+        f"/api/v1/alerts/rules/{rule_id}/approve",
+        json={
+            "protocol_reference": "TEST protocol placeholder.",
+            "source_reference": "TEST source placeholder.",
+            "approval_version": "test-version",
+            "scope": ["operational"],
+        },
+        headers=_authorization_headers(
+            astronaut_ids=["astronaut-01", "astronaut-02"],
+            permissions=["alerts:approve"],
+        ),
+    )
+    assert approval.status_code == 200
+    activation = client.post(
+        f"/api/v1/alerts/rules/{rule_id}/activate",
+        headers=_authorization_headers(
+            astronaut_ids=["astronaut-01", "astronaut-02"],
+            permissions=["alerts:configure"],
+        ),
+    )
+    assert activation.status_code == 200
+    assert activation.json()["approval"]["approved_rule_version"] == version
 
 
 def _authentication_proof(challenge, private_key=_AUTH_PRIVATE_KEY):
@@ -1019,6 +1048,29 @@ def test_glucose_analysis_requires_and_filters_context(tmp_path, monkeypatch):
     assert fasting.json()["glucose_context"] == "fasting"
 
 
+def test_indicator_contract_marks_clinical_thresholds_as_illustrative(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HEALTH_DB_PATH", str(tmp_path / "health.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/indicators")
+
+    assert response.status_code == 200
+    metrics = response.json()
+    heart_rate = next(item for item in metrics if item["metric"] == "heart_rate")
+    assert heart_rate["technical_validation_range"] == [20, 250]
+    thresholds = heart_rate["clinical_thresholds"]
+    assert thresholds["status"] == "illustrative"
+    assert thresholds["source_reference"] == (
+        "Sem fonte clínica validada neste deployment; os valores são ilustrativos "
+        "e não constituem diagnóstico ou critério de aptidão."
+    )
+    assert thresholds["minimum_value"] is None
+    assert thresholds["maximum_value"] is None
+
+
 def test_reading_coverage_reports_observed_counts_without_claiming_missing_data(
     tmp_path,
     monkeypatch,
@@ -1212,6 +1264,42 @@ def test_unauthenticated_invalid_ingestion_is_not_counted_as_rejected_data(
     assert rejected_count == 0
 
 
+def test_indicator_catalog_groups_metrics_by_body_system_and_trend_support():
+    with TestClient(app) as client:
+        response = client.get("/api/v1/indicators")
+
+    assert response.status_code == 200
+    heart_rate = next(
+        indicator for indicator in response.json() if indicator["metric"] == "heart_rate"
+    )
+    mood = next(
+        indicator for indicator in response.json() if indicator["metric"] == "mood"
+    )
+    assert heart_rate["body_system"] == "cardiovascular"
+    assert heart_rate["trend_supported"] is True
+    assert mood["body_system"] == "wellbeing"
+    assert mood["trend_supported"] is True
+
+
+def test_indicator_catalog_exposes_stable_ui_labels_and_sort_order():
+    with TestClient(app) as client:
+        response = client.get("/api/v1/indicators")
+
+    assert response.status_code == 200
+    heart_rate = next(
+        indicator for indicator in response.json() if indicator["metric"] == "heart_rate"
+    )
+    oxygen = next(
+        indicator
+        for indicator in response.json()
+        if indicator["metric"] == "blood_oxygen"
+    )
+    assert heart_rate["display_name"] == "Heart rate"
+    assert heart_rate["sort_order"] == 3
+    assert oxygen["display_name"] == "Blood oxygen"
+    assert oxygen["sort_order"] == 8
+
+
 def test_indicator_catalog_includes_blood_oxygen():
     with TestClient(app) as client:
         response = client.get("/api/v1/indicators")
@@ -1226,6 +1314,20 @@ def test_indicator_catalog_includes_blood_oxygen():
     assert oxygen["technical_validation_range"] == [0, 100]
 
 
+def test_indicator_catalog_includes_mission_context_and_ground_support():
+    with TestClient(app) as client:
+        response = client.get("/api/v1/indicators")
+
+    assert response.status_code == 200
+    heart_rate = next(
+        indicator for indicator in response.json() if indicator["metric"] == "heart_rate"
+    )
+    assert "monitoring_focus" in heart_rate
+    assert "ground_support_note" in heart_rate
+    assert "esforço" in heart_rate["monitoring_focus"].lower()
+    assert "solo" in heart_rate["ground_support_note"].lower()
+
+
 def test_frontend_is_served_from_application_root():
     with TestClient(app) as client:
         response = client.get("/")
@@ -1238,6 +1340,28 @@ def test_frontend_is_served_from_application_root():
     assert "Cadastrar astronauta" not in response.text
     assert "auth/challenges" not in response.text
     assert "soma-prototype-v1" not in response.text
+    assert 'data-view="mission"' in response.text
+    assert 'id="mission-dashboard-form"' in response.text
+    assert 'type="password"' in response.text
+    assert "/api/v1/readings/coverage" in response.text
+    assert "/api/v1/readings/analysis" in response.text
+    assert "/api/v1/alerts/" in response.text
+    assert 'data-ack-alert=' in response.text
+    assert 'id="offline-reading-form"' in response.text
+    assert "indexedDB.open" in response.text
+    assert 'navigator.serviceWorker.register("/service-worker.js")' in response.text
+    assert "monitoring_support_not_diagnosis" in response.text
+    assert "localStorage" not in response.text
+
+
+def test_offline_service_worker_is_served_without_caching_api_responses():
+    with TestClient(app) as client:
+        response = client.get("/service-worker.js")
+
+    assert response.status_code == 200
+    assert "text/javascript" in response.headers["content-type"]
+    assert "url.pathname.startsWith(\"/api/\")" in response.text
+    assert "caches.match(\"/\")" in response.text
 
 
 def test_public_osdr_inspiration4_summary_requires_no_mission_login(monkeypatch):
@@ -1324,10 +1448,13 @@ def test_configured_monitoring_alerts_are_atomic_idempotent_and_scoped():
     _create_bootstrap_file(
         Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
         monitoring_alert_rules=rules,
+        enable_alert_configuration=True,
+        enable_alert_approval=True,
     )
     start = datetime.now(timezone.utc) - timedelta(minutes=1)
 
     with TestClient(app) as client:
+        _approve_and_activate_test_rule(client, "heart-rate-monitoring", 1)
         for value in (54, 55, 100, 101):
             response = client.post(
                 "/api/v1/readings",
@@ -1450,10 +1577,13 @@ def test_monitoring_alert_persistence_failure_rolls_back_reading():
     _create_bootstrap_file(
         Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
         monitoring_alert_rules=rules,
+        enable_alert_configuration=True,
+        enable_alert_approval=True,
     )
     reading_id = "12a2452f-4de5-43eb-b42a-a88723b9df88"
 
     with TestClient(app) as client:
+        _approve_and_activate_test_rule(client, "heart-rate-minimum", 1)
         connection = connect_database()
         try:
             connection.execute(
@@ -1516,6 +1646,8 @@ def test_alert_acknowledgement_is_permissioned_scoped_and_idempotent():
     _create_bootstrap_file(
         Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
         monitoring_alert_rules=rules,
+        enable_alert_configuration=True,
+        enable_alert_approval=True,
         enable_alert_acknowledgement=True,
     )
     ack_headers = _authorization_headers(
@@ -1523,6 +1655,7 @@ def test_alert_acknowledgement_is_permissioned_scoped_and_idempotent():
     )
 
     with TestClient(app) as client:
+        _approve_and_activate_test_rule(client, "heart-rate-minimum", 1)
         reading = client.post(
             "/api/v1/readings",
             json={
@@ -1587,22 +1720,133 @@ def test_alert_acknowledgement_is_permissioned_scoped_and_idempotent():
     assert unknown_alert.status_code == 404
 
 
-def test_alert_rule_management_is_delegated_versioned_audited_and_persistent():
+def test_monitoring_rules_require_scoped_approval_before_activation():
     _create_bootstrap_file(
         Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
         enable_alert_configuration=True,
+        enable_alert_approval=True,
     )
-    admin_headers = _authorization_headers(
+    configuration_headers = _authorization_headers(
         astronaut_ids=["astronaut-01", "astronaut-02"],
         permissions=["readings:read", "alerts:configure"],
+    )
+    approval_headers = _authorization_headers(
+        astronaut_ids=["astronaut-01", "astronaut-02"],
+        permissions=["alerts:approve"],
     )
     rule_body = {
         "expected_version": 0,
         "metric": "heart_rate",
         "minimum_value": 55,
+        "rationale": "Test-only rule; not a clinical recommendation.",
+        "source_reference": "TEST source placeholder.",
+    }
+
+    with TestClient(app) as client:
+        created = client.put(
+            "/api/v1/alerts/rules/approval-gate-test",
+            json=rule_body,
+            headers=configuration_headers,
+        )
+        unapproved_activation = client.post(
+            "/api/v1/alerts/rules/approval-gate-test/activate",
+            headers=configuration_headers,
+        )
+        missing_permission = client.post(
+            "/api/v1/alerts/rules/approval-gate-test/approve",
+            json={
+                "protocol_reference": "TEST protocol placeholder.",
+                "source_reference": "TEST source placeholder.",
+                "approval_version": "test-version",
+                "scope": ["operational"],
+            },
+            headers=configuration_headers,
+        )
+        clinical_only_approval = client.post(
+            "/api/v1/alerts/rules/approval-gate-test/approve",
+            json={
+                "protocol_reference": "TEST protocol placeholder.",
+                "source_reference": "TEST source placeholder.",
+                "approval_version": "test-version",
+                "scope": ["clinical"],
+            },
+            headers=approval_headers,
+        )
+        clinical_only_activation = client.post(
+            "/api/v1/alerts/rules/approval-gate-test/activate",
+            headers=configuration_headers,
+        )
+        updated = client.put(
+            "/api/v1/alerts/rules/approval-gate-test",
+            json={**rule_body, "expected_version": 1, "minimum_value": 60},
+            headers=configuration_headers,
+        )
+        operational_approval = client.post(
+            "/api/v1/alerts/rules/approval-gate-test/approve",
+            json={
+                "protocol_reference": "TEST protocol version ref.",
+                "source_reference": "TEST source version ref.",
+                "approval_version": "test-version-2",
+                "scope": ["operational"],
+            },
+            headers=approval_headers,
+        )
+        activation = client.post(
+            "/api/v1/alerts/rules/approval-gate-test/activate",
+            headers=configuration_headers,
+        )
+
+    assert created.status_code == 200
+    assert created.json()["active"] is False
+    assert created.json()["approval"]["status"] == "unapproved"
+    assert unapproved_activation.status_code == 409
+    assert missing_permission.status_code == 403
+    assert clinical_only_approval.status_code == 200
+    assert clinical_only_approval.json()["approval"]["approval_authority"] == "user-01"
+    assert clinical_only_approval.json()["approval"]["scope"] == ["clinical"]
+    assert clinical_only_approval.json()["approval"]["approval_date"] is not None
+    assert clinical_only_activation.status_code == 409
+    assert updated.status_code == 200
+    assert updated.json()["active"] is False
+    assert updated.json()["approval"]["status"] == "unapproved"
+    assert operational_approval.status_code == 200
+    assert operational_approval.json()["approval"]["approved_rule_version"] == 2
+    assert operational_approval.json()["approval"]["approval_version"] == "test-version-2"
+    assert operational_approval.json()["approval"]["protocol_reference"] == (
+        "TEST protocol version ref."
+    )
+    assert activation.status_code == 200
+    assert activation.json()["active"] is True
+    assert activation.json()["approval"]["scope"] == ["operational"]
+
+
+def test_alert_rule_management_is_delegated_versioned_audited_and_persistent():
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_alert_configuration=True,
+        enable_alert_approval=True,
+    )
+    admin_headers = _authorization_headers(
+        astronaut_ids=["astronaut-01", "astronaut-02"],
+        permissions=["readings:read", "alerts:configure"],
+    )
+    approver_headers = _authorization_headers(
+        astronaut_ids=["astronaut-01", "astronaut-02"],
+        permissions=["alerts:approve"],
+    )
+    approval_payload = {
+        "protocol_reference": "TEST protocol placeholder.",
+        "source_reference": "TEST source placeholder.",
+        "approval_version": "test-version",
+        "scope": ["operational"],
+    }
+    rule_body = {
+        "expected_version": 0,
+        "metric": "heart_rate",
+        "minimum_value": 55,
         "maximum_value": None,
-        "rationale": "Limite configurado pela equipa autorizada.",
-        "source_reference": "Protocolo de monitorização da missão, secção 4.",
+        "rationale": "Test-only rule; not a clinical recommendation.",
+        "source_reference": "TEST rule source placeholder.",
     }
 
     with TestClient(app) as client:
@@ -1623,6 +1867,19 @@ def test_alert_rule_management_is_delegated_versioned_audited_and_persistent():
             json=rule_body,
             headers=admin_headers,
         )
+        unapproved_activation = client.post(
+            "/api/v1/alerts/rules/heart-rate-check/activate",
+            headers=admin_headers,
+        )
+        approved_v1 = client.post(
+            "/api/v1/alerts/rules/heart-rate-check/approve",
+            json=approval_payload,
+            headers=approver_headers,
+        )
+        activated_v1 = client.post(
+            "/api/v1/alerts/rules/heart-rate-check/activate",
+            headers=admin_headers,
+        )
         stale_update = client.put(
             "/api/v1/alerts/rules/heart-rate-check",
             json=rule_body,
@@ -1637,9 +1894,8 @@ def test_alert_rule_management_is_delegated_versioned_audited_and_persistent():
             },
             headers=admin_headers,
         )
-        deactivated = client.post(
-            "/api/v1/alerts/rules/heart-rate-check/deactivate",
-            json={"expected_version": 2},
+        unapproved_update_activation = client.post(
+            "/api/v1/alerts/rules/heart-rate-check/activate",
             headers=admin_headers,
         )
         inactive_reading = client.post(
@@ -1651,13 +1907,13 @@ def test_alert_rule_management_is_delegated_versioned_audited_and_persistent():
             },
             headers=_authorization_headers(),
         )
-        reactivated = client.put(
-            "/api/v1/alerts/rules/heart-rate-check",
-            json={
-                **rule_body,
-                "expected_version": 3,
-                "minimum_value": 50,
-            },
+        approved_v2 = client.post(
+            "/api/v1/alerts/rules/heart-rate-check/approve",
+            json=approval_payload,
+            headers=approver_headers,
+        )
+        activated_v2 = client.post(
+            "/api/v1/alerts/rules/heart-rate-check/activate",
             headers=admin_headers,
         )
         active_reading = client.post(
@@ -1668,6 +1924,24 @@ def test_alert_rule_management_is_delegated_versioned_audited_and_persistent():
                 "measurements": [{"metric": "heart_rate", "value": 40}],
             },
             headers=_authorization_headers(),
+        )
+        deactivated = client.post(
+            "/api/v1/alerts/rules/heart-rate-check/deactivate",
+            json={"expected_version": 2},
+            headers=admin_headers,
+        )
+        deactivated_activation = client.post(
+            "/api/v1/alerts/rules/heart-rate-check/activate",
+            headers=admin_headers,
+        )
+        approved_v3 = client.post(
+            "/api/v1/alerts/rules/heart-rate-check/approve",
+            json=approval_payload,
+            headers=approver_headers,
+        )
+        reactivated = client.post(
+            "/api/v1/alerts/rules/heart-rate-check/activate",
+            headers=admin_headers,
         )
         alerts = client.get(
             "/api/v1/alerts",
@@ -1687,23 +1961,38 @@ def test_alert_rule_management_is_delegated_versioned_audited_and_persistent():
     assert partial_scope.status_code == 403
     assert created.status_code == 200
     assert created.json()["rule"]["version"] == 1
+    assert created.json()["active"] is False
+    assert created.json()["approval"]["status"] == "unapproved"
+    assert unapproved_activation.status_code == 409
+    assert approved_v1.status_code == 200
+    assert activated_v1.status_code == 200
     assert stale_update.status_code == 409
     assert updated.status_code == 200
     assert updated.json()["rule"]["version"] == 2
+    assert updated.json()["active"] is False
+    assert updated.json()["approval"]["status"] == "unapproved"
+    assert unapproved_update_activation.status_code == 409
+    assert inactive_reading.status_code == 201
+    assert approved_v2.status_code == 200
+    assert activated_v2.status_code == 200
+    assert active_reading.status_code == 201
     assert deactivated.status_code == 200
     assert deactivated.json()["rule"]["version"] == 3
     assert deactivated.json()["active"] is False
-    assert inactive_reading.status_code == 201
+    assert deactivated_activation.status_code == 409
+    assert approved_v3.status_code == 200
     assert reactivated.status_code == 200
-    assert reactivated.json()["rule"]["version"] == 4
     assert reactivated.json()["active"] is True
-    assert active_reading.status_code == 201
+    assert reactivated.json()["rule"]["version"] == 3
     assert alerts.status_code == 200
     assert alerts.json()["total"] == 1
     assert audit.status_code == 200
     assert [
         item["action"] for item in reversed(audit.json()["items"])
-    ] == ["created", "updated", "deactivated", "reactivated"]
+    ] == [
+        "created", "approved", "activated", "updated", "approved", "activated",
+        "deactivated", "approved", "activated",
+    ]
     assert all(item["actor_id"] == "user-01" for item in audit.json()["items"])
 
     with TestClient(app) as restarted_client:
@@ -1717,9 +2006,10 @@ def test_alert_rule_management_is_delegated_versioned_audited_and_persistent():
         )
 
     assert persisted_rules.status_code == 200
-    assert persisted_rules.json()["items"][0]["rule"]["version"] == 4
+    assert persisted_rules.json()["items"][0]["rule"]["version"] == 3
     assert persisted_rules.json()["items"][0]["active"] is True
-    assert persisted_audit.json()["total"] == 4
+    assert persisted_rules.json()["items"][0]["approval"]["status"] == "approved"
+    assert persisted_audit.json()["total"] == 9
 
 
 def test_alert_rule_update_rolls_back_if_audit_record_cannot_be_written():

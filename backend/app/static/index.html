@@ -60,7 +60,7 @@
     a { color: var(--accent); text-underline-offset: 3px; }
     button, select { font: inherit; }
     button, select, a { -webkit-tap-highlight-color: transparent; }
-    button:focus-visible, select:focus-visible, a:focus-visible {
+    button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible {
       outline: 3px solid var(--accent);
       outline-offset: 3px;
     }
@@ -215,7 +215,7 @@
     .controls { display: flex; align-items: flex-end; gap: 10px; }
     .field { display: grid; gap: 5px; }
     .field label { font-size: 13px; font-weight: 750; }
-    select {
+    select, input {
       min-width: 220px;
       min-height: 44px;
       border: 1px solid var(--border);
@@ -224,6 +224,44 @@
       background: var(--surface);
       color: var(--text);
     }
+    input[type="password"] { width: 100%; }
+    .mission-form {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      align-items: end;
+      gap: 14px;
+      margin-top: 16px;
+    }
+    .mission-form .field { min-width: 0; }
+    .mission-form input { width: 100%; }
+    .mission-results { display: grid; gap: 16px; margin-top: 18px; }
+    .mission-alert-list { display: grid; gap: 12px; }
+    .mission-alert {
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--danger);
+      border-radius: 12px;
+      padding: 14px;
+      background: var(--surface);
+    }
+    .mission-alert h3 { margin-bottom: 6px; }
+    .mission-alert p { margin: 6px 0; color: var(--muted); font-size: 14px; }
+    .mission-alert .button { margin-top: 8px; }
+    .mission-indicators { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+    .mission-indicator {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      background: var(--surface-soft);
+    }
+    .mission-indicator strong { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+    .mission-indicator span { color: var(--muted); font-size: 13px; }
+    .mission-state { min-height: 1.5em; margin: 12px 0 0; color: var(--muted); }
+    .offline-metric-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 16px 0; }
+    .offline-queue { margin-top: 16px; }
+    .offline-queue-list { display: grid; gap: 10px; margin-top: 14px; }
+    .offline-queue-item { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--surface-soft); }
+    .offline-queue-item strong, .offline-queue-item span { display: block; overflow-wrap: anywhere; }
+    .offline-queue-item span { color: var(--muted); font-size: 13px; }
     .button {
       display: inline-flex;
       min-height: 44px;
@@ -244,6 +282,165 @@
     .button:active { transform: translateY(1px); }
     .button:disabled { cursor: wait; opacity: .65; }
     .button.secondary { border-color: var(--border); background: var(--surface); color: var(--text); }
+
+    .indicator-overview {
+      margin-top: 18px;
+      display: grid;
+      gap: 18px;
+    }
+    .mission-overview {
+      display: grid;
+      gap: 18px;
+      margin-top: 18px;
+    }
+    .mission-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .mission-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      background: var(--surface-soft);
+    }
+    .mission-card .eyebrow {
+      display: block;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .mission-card strong {
+      display: block;
+      font-size: 28px;
+      line-height: 1.1;
+      letter-spacing: -.04em;
+    }
+    .mission-card p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 14px;
+    }
+    .indicator-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .indicator-summary-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      background: var(--surface-soft);
+    }
+    .indicator-summary-card small {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-weight: 800;
+    }
+    .indicator-summary-card strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 24px;
+      line-height: 1.1;
+      letter-spacing: -.03em;
+    }
+    .indicator-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .indicator-filter {
+      min-height: 44px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 7px 12px;
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .indicator-filter[aria-pressed="true"] {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .indicator-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .indicator-group {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      background: var(--surface-soft);
+    }
+    .indicator-group h3 {
+      margin: 0 0 12px;
+      font-size: 17px;
+      letter-spacing: -.02em;
+    }
+    .indicator-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .indicator-item {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: var(--surface);
+    }
+    .indicator-name {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-weight: 750;
+    }
+    .indicator-meta {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .indicator-context,
+    .indicator-support {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .indicator-support {
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .badge {
+      border-radius: 999px;
+      padding: 4px 8px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
 
     .notice {
       margin: 14px 0;
@@ -330,7 +527,7 @@
       .card { border-radius: 15px; padding: 16px; }
       .toolbar, .chart-top { align-items: stretch; flex-direction: column; }
       .controls { align-items: stretch; flex-direction: column; }
-      select, .controls .button { width: 100%; }
+      select, input, .controls .button { width: 100%; }
       .legend { gap: 8px; }
       th, td { padding: 10px; }
     }
@@ -352,6 +549,8 @@
     </div>
     <nav class="main-nav" aria-label="Navegação principal">
       <button type="button" data-view="data" aria-current="page">Explorar dados</button>
+      <button type="button" data-view="mission">Painel da missão</button>
+      <button type="button" data-view="offline">Registo offline</button>
       <button type="button" data-view="about">Fonte e método</button>
     </nav>
   </header>
@@ -424,8 +623,162 @@
           </div>
         </section>
 
+        <section class="card indicator-overview" aria-labelledby="indicator-overview-title">
+          <div class="toolbar">
+            <div class="toolbar-copy">
+              <h2 id="indicator-overview-title">Indicadores em monitorização</h2>
+              <p>Os indicadores são agrupados por sistema corporal e cada um informa se a tendência é suportada.</p>
+            </div>
+          </div>
+          <div id="clinical-warning" class="notice" role="note">Limiares clínicos neste painel são ilustrativos e não substituem avaliação profissional; a fonte não está validada neste deployment.</div>
+          <div id="indicator-summary" class="indicator-summary" aria-live="polite"></div>
+          <div id="indicator-filters" class="indicator-filters" aria-label="Filtrar indicadores por sistema corporal"></div>
+          <div id="indicator-groups" class="indicator-grid" role="list"></div>
+        </section>
+
+        <section class="card mission-overview" aria-labelledby="mission-overview-title">
+          <div class="toolbar">
+            <div class="toolbar-copy">
+              <h2 id="mission-overview-title">Operação e apoio ao solo</h2>
+              <p>O painel prioriza tendência, contexto por sistema corporal e continuidade de missão em ligações instáveis.</p>
+            </div>
+          </div>
+          <div id="mission-overview-grid" class="mission-grid" aria-live="polite"></div>
+        </section>
+
         <p id="source-license-note" class="dataset-status"></p>
       </div>
+    </section>
+
+    <section id="view-mission" aria-labelledby="mission-title" hidden>
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">Acesso autenticado · dados operacionais</p>
+          <h1 id="mission-title">Monitorização por tripulante</h1>
+          <p class="lede">Consulte medições, cobertura observada e alertas para um astronauta. A autorização é verificada pela API para cada pedido.</p>
+        </div>
+        <span class="tag">Apoio à monitorização · não diagnóstico</span>
+      </div>
+      <section class="card" aria-labelledby="mission-query-title">
+        <h2 id="mission-query-title">Selecionar período e tripulante</h2>
+        <p>Use uma credencial de utilizador já emitida pela autoridade de identidade da missão. A credencial fica apenas na memória desta página e não é guardada no navegador.</p>
+        <form id="mission-dashboard-form" class="mission-form">
+          <div class="field">
+            <label for="mission-token">Token de acesso</label>
+            <input id="mission-token" name="token" type="password" autocomplete="off" required>
+          </div>
+          <div class="field">
+            <label for="mission-astronaut">Identificador do tripulante</label>
+            <input id="mission-astronaut" name="astronaut" type="text" maxlength="100" autocomplete="off" required>
+          </div>
+          <div class="field">
+            <label for="mission-start">Início do período</label>
+            <input id="mission-start" name="start" type="datetime-local" required>
+          </div>
+          <div class="field">
+            <label for="mission-end">Fim do período</label>
+            <input id="mission-end" name="end" type="datetime-local" required>
+          </div>
+          <div class="controls">
+            <button id="mission-load" class="button" type="submit">Carregar resumo</button>
+            <button id="mission-clear" class="button secondary" type="button">Terminar acesso</button>
+          </div>
+        </form>
+        <p id="mission-status" class="mission-state" role="status" aria-live="polite"></p>
+      </section>
+      <div id="mission-results" class="mission-results" hidden>
+        <section class="card" aria-labelledby="mission-reading-title">
+          <h2 id="mission-reading-title">Medições recentes</h2>
+          <p id="mission-reading-summary" class="dataset-status"></p>
+          <div id="mission-indicators" class="mission-indicators"></div>
+        </section>
+        <section class="card" aria-labelledby="mission-trend-title">
+          <h2 id="mission-trend-title">Tendência descritiva</h2>
+          <p class="dataset-status">Resumo estatístico do período escolhido, sem interpretação clínica ou critério de aptidão.</p>
+          <form id="mission-trend-form" class="mission-form">
+            <div class="field">
+              <label for="mission-trend-metric">Indicador</label>
+              <select id="mission-trend-metric" required></select>
+            </div>
+            <div id="mission-glucose-context-field" class="field" hidden>
+              <label for="mission-glucose-context">Contexto da glicemia</label>
+              <select id="mission-glucose-context">
+                <option value="">Selecione</option>
+                <option value="fasting">Jejum</option>
+                <option value="after_meal">Após refeição</option>
+                <option value="random">Aleatório</option>
+                <option value="unknown">Desconhecido</option>
+              </select>
+            </div>
+            <button id="mission-trend-load" class="button secondary" type="submit">Calcular resumo</button>
+          </form>
+          <p id="mission-trend-result" class="mission-state" role="status" aria-live="polite"></p>
+        </section>
+        <section class="card" aria-labelledby="mission-alert-title" data-interpretation="monitoring_support_not_diagnosis">
+          <h2 id="mission-alert-title">Alertas no período</h2>
+          <p class="dataset-status">Alertas são eventos gerados por regras configuradas; não são diagnósticos nem recomendações clínicas.</p>
+          <p id="mission-alert-summary" class="dataset-status"></p>
+          <div id="mission-alerts" class="mission-alert-list"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="view-offline" aria-labelledby="offline-title" hidden>
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">Fila local · sincronização sob pedido</p>
+          <h1 id="offline-title">Registo offline</h1>
+          <p class="lede">Registe medições localmente quando a ligação falhar e envie o lote quando estiver online. A API valida identidade, âmbito, valores e duplicados.</p>
+        </div>
+        <span class="tag">Sem sincronização automática</span>
+      </div>
+      <div class="notice" role="note">Aviso de privacidade: a fila usa armazenamento local do navegador e não é cifrada pela aplicação. Utilize apenas um dispositivo gerido e aprovado; não introduza dados reais de saúde neste protótipo. As faixas são validações técnicas, não limites clínicos nem intervalos de normalidade.</div>
+      <section class="card" aria-labelledby="offline-record-title">
+        <h2 id="offline-record-title">Nova medição local</h2>
+        <form id="offline-reading-form">
+          <div class="mission-form">
+            <div class="field">
+              <label for="offline-device-id">ID do dispositivo provisionado</label>
+              <input id="offline-device-id" type="text" maxlength="36" autocomplete="off" required>
+            </div>
+            <div class="field">
+              <label for="offline-astronaut-id">ID do tripulante</label>
+              <input id="offline-astronaut-id" type="text" maxlength="100" autocomplete="off" required>
+            </div>
+            <div class="field">
+              <label for="offline-measured-at">Instante da medição</label>
+              <input id="offline-measured-at" type="datetime-local" required>
+            </div>
+          </div>
+          <div id="offline-metric-fields" class="offline-metric-fields"></div>
+          <div class="field">
+            <label for="offline-glucose-context">Contexto da glicemia (se aplicável)</label>
+            <select id="offline-glucose-context">
+              <option value="">Não indicado</option>
+              <option value="fasting">Jejum</option>
+              <option value="after_meal">Após refeição</option>
+              <option value="random">Aleatório</option>
+              <option value="unknown">Desconhecido</option>
+            </select>
+          </div>
+          <button id="offline-save-reading" class="button" type="submit">Guardar na fila local</button>
+        </form>
+        <p id="offline-record-status" class="mission-state" role="status" aria-live="polite"></p>
+      </section>
+      <section class="card offline-queue" aria-labelledby="offline-queue-title">
+        <h2 id="offline-queue-title">Fila pendente</h2>
+        <p id="offline-connection-status" class="dataset-status" role="status" aria-live="polite"></p>
+        <p id="offline-queue-summary" class="dataset-status">A carregar fila local…</p>
+        <div id="offline-queue-list" class="offline-queue-list"></div>
+        <form id="offline-sync-form" class="mission-form">
+          <div class="field">
+            <label for="offline-device-token">Token de dispositivo</label>
+            <input id="offline-device-token" type="password" autocomplete="off" required>
+          </div>
+          <button id="offline-sync" class="button" type="submit">Sincronizar agora</button>
+        </form>
+        <p id="offline-sync-status" class="mission-state" role="status" aria-live="polite"></p>
+      </section>
     </section>
 
     <section id="view-about" aria-labelledby="about-title" hidden>
@@ -480,13 +833,22 @@
 
   <script>
     const DATASET_URL = "/api/v1/scientific-data/public/osdr/inspiration4/cmp";
-    const state = { dataset: null, metricKey: null, loading: false };
+    const INDICATORS_URL = "/api/v1/indicators";
+    const state = { dataset: null, metricKey: null, loading: false, indicatorCatalog: [], indicatorFilter: "all", missionToken: "", offlineDb: null };
     const byId = id => document.getElementById(id);
     const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
     })[char]);
     const numberFormat = new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 2 });
     const formatNumber = value => value === null || value === undefined ? "—" : numberFormat.format(value);
+    const labelForSystem = value => ({
+      cardiovascular: "Cardiovascular",
+      metabolic: "Metabólico",
+      thermoregulation: "Termorregulação",
+      recovery: "Recuperação",
+      wellbeing: "Bem-estar",
+      respiratory: "Respiratório"
+    })[value] || value;
     const formatDate = value => {
       if (!value) return "não indicada";
       const date = new Date(value);
@@ -495,10 +857,35 @@
       }).format(date) + " UTC";
     };
 
+    function clearMissionSession() {
+      state.missionToken = "";
+      byId("mission-results").hidden = true;
+      byId("mission-indicators").innerHTML = "";
+      byId("mission-alerts").innerHTML = "";
+      byId("mission-alert-summary").textContent = "";
+      byId("mission-token").value = "";
+      byId("mission-astronaut").value = "";
+      byId("mission-trend-result").textContent = "";
+      byId("mission-astronaut").value = "";
+      byId("mission-status").textContent = "";
+    }
+
+    function clearOfflineView() {
+      byId("offline-queue-list").innerHTML = "";
+      byId("offline-astronaut-id").value = "";
+      byId("offline-device-token").value = "";
+      byId("offline-record-status").textContent = "";
+      byId("offline-sync-status").textContent = "";
+      [...document.querySelectorAll("[data-offline-metric]")].forEach(input => { input.value = ""; });
+      byId("offline-glucose-context").value = "";
+    }
+
     function setView(view) {
-      const showData = view === "data";
-      byId("view-data").hidden = !showData;
-      byId("view-about").hidden = showData;
+      document.querySelectorAll("main > section[id^='view-']").forEach(section => {
+        section.hidden = section.id !== `view-${view}`;
+      });
+      if (view !== "mission") clearMissionSession();
+      if (view !== "offline") clearOfflineView();
       document.querySelectorAll("[data-view]").forEach(button => {
         if (button.dataset.view === view) button.setAttribute("aria-current", "page");
         else button.removeAttribute("aria-current");
@@ -585,6 +972,602 @@
       }).join("");
     }
 
+    function renderIndicatorGroups(indicators) {
+      const container = byId("indicator-groups");
+      const filtered = state.indicatorFilter === "all"
+        ? indicators
+        : indicators.filter(indicator => indicator.body_system === state.indicatorFilter);
+      const warning = byId("clinical-warning");
+      if (warning && indicators.some(indicator => indicator.clinical_thresholds && indicator.clinical_thresholds.status === "illustrative")) {
+        warning.textContent = "Limiares clínicos neste painel são ilustrativos e não substituem avaliação profissional; a fonte não está validada neste deployment.";
+      }
+      const summary = byId("indicator-summary");
+      if (summary) {
+        const systems = new Set(indicators.map(indicator => indicator.body_system).filter(Boolean));
+        const trendReady = indicators.filter(indicator => indicator.trend_supported).length;
+        summary.innerHTML = `
+          <div class="indicator-summary-card">
+            <small>Total</small>
+            <strong>${indicators.length}</strong>
+          </div>
+          <div class="indicator-summary-card">
+            <small>Sistemas</small>
+            <strong>${systems.size}</strong>
+          </div>
+          <div class="indicator-summary-card">
+            <small>Tendência</small>
+            <strong>${trendReady}</strong>
+          </div>
+        `;
+      }
+      const groups = new Map();
+      filtered.forEach(indicator => {
+        const key = indicator.body_system || "other";
+        const current = groups.get(key) || [];
+        current.push(indicator);
+        groups.set(key, current);
+      });
+      if (!groups.size) {
+        container.innerHTML = '<p class="dataset-status">Sem indicadores disponíveis para este sistema corporal.</p>';
+        return;
+      }
+      const entries = [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
+      container.innerHTML = entries.map(([system, items]) => {
+        const orderedItems = [...items].sort((left, right) => (left.sort_order ?? 999) - (right.sort_order ?? 999));
+        return `
+          <section class="indicator-group" role="listitem">
+            <h3>${escapeHtml(labelForSystem(system))}</h3>
+            <ul class="indicator-list">
+              ${orderedItems.map(item => `
+                <li class="indicator-item">
+                  <div class="indicator-name">
+                    <span>${escapeHtml(item.display_name || item.metric.replace(/_/g, " "))}</span>
+                    <span class="badge">${item.trend_supported ? "Tendência" : "Sem tendência"}</span>
+                  </div>
+                  <div class="indicator-meta">
+                    <div>Unidade: ${escapeHtml(item.unit)}</div>
+                    <div>Faixa técnica: ${escapeHtml(item.technical_validation_range.join("–"))}</div>
+                  </div>
+                    <div class="indicator-context">${escapeHtml(item.monitoring_focus || "Contexto operacional em análise.")}</div>
+                    <div class="indicator-support">${escapeHtml(item.ground_support_note || "Contexto de apoio ao solo não disponível.")}</div>
+                  <div class="badges">
+                    <span class="badge">${item.clinical_thresholds && item.clinical_thresholds.status === "illustrative" ? "ilustrativo" : "validado"}</span>
+                  </div>
+                </li>
+              `).join("")}
+            </ul>
+          </section>
+        `;
+      }).join("");
+    }
+
+    function renderIndicatorFilters() {
+      const filters = [
+        { key: "all", label: "Todos" },
+        { key: "cardiovascular", label: "Cardiovascular" },
+        { key: "metabolic", label: "Metabólico" },
+        { key: "thermoregulation", label: "Termorregulação" },
+        { key: "recovery", label: "Recuperação" },
+        { key: "wellbeing", label: "Bem-estar" },
+        { key: "respiratory", label: "Respiratório" },
+      ];
+      byId("indicator-filters").innerHTML = filters.map(filter => `
+        <button type="button" class="indicator-filter" data-indicator-filter="${filter.key}" aria-pressed="${state.indicatorFilter === filter.key}">
+          ${escapeHtml(filter.label)}
+        </button>
+      `).join("");
+    }
+
+    function renderMissionOverview() {
+      const indicators = state.indicatorCatalog || [];
+      const systems = new Set(indicators.map(indicator => indicator.body_system).filter(Boolean));
+      const trendReady = indicators.filter(indicator => indicator.trend_supported).length;
+      const missing = indicators.some(indicator => !indicator.trend_supported);
+      const container = byId("mission-overview-grid");
+      if (!container) return;
+      container.innerHTML = `
+        <article class="mission-card">
+          <span class="eyebrow">Indicadores</span>
+          <strong>${indicators.length}</strong>
+          <p>Catálogo operacional em monitorização por sistema corporal e contexto de missão.</p>
+        </article>
+        <article class="mission-card">
+          <span class="eyebrow">Sistemas</span>
+          <strong>${systems.size}</strong>
+          <p>Grupos principais para comparação de tendência, carga e recuperação.</p>
+        </article>
+        <article class="mission-card">
+          <span class="eyebrow">Tendência</span>
+          <strong>${trendReady}</strong>
+          <p>${missing ? "A maioria está pronta para análise temporal; alguns itens exigem contexto adicional." : "Todos os indicadores estão preparados para análise temporal."}</p>
+        </article>
+        <article class="mission-card">
+          <span class="eyebrow">Offline</span>
+          <strong>Sincronizado</strong>
+          <p>O estado local é tratado como ciência de apoio e continuidade operacional; o solo continua responsável pela interpretação final.</p>
+        </article>
+      `;
+    }
+
+    function renderMissionReadings(history, coverage) {
+      const latestByMetric = new Map();
+      history.items.forEach(reading => {
+        if (!latestByMetric.has(reading.metric)) latestByMetric.set(reading.metric, reading);
+      });
+      byId("mission-reading-summary").textContent =
+        `${history.total} medições no período (a mostrar até ${history.items.length}); contagens observadas não indicam medições esperadas ou em falta.`;
+      byId("mission-indicators").innerHTML = coverage.indicators.map(indicator => {
+        const latest = latestByMetric.get(indicator.metric);
+        const label = state.indicatorCatalog.find(item => item.metric === indicator.metric)?.display_name
+          || indicator.metric.replace(/_/g, " ");
+        const value = latest
+          ? `${formatNumber(latest.value)} ${escapeHtml(latest.unit)}`
+          : "Sem medição";
+        const measuredAt = latest ? formatDate(latest.measured_at) : "Não observado no período";
+        return `<article class="mission-indicator">
+          <span>${escapeHtml(label)}</span>
+          <strong>${value}</strong>
+          <span>${indicator.sample_count} registos · ${escapeHtml(measuredAt)}</span>
+        </article>`;
+      }).join("");
+    }
+
+    function renderMissionAlerts(alertHistory) {
+      const container = byId("mission-alerts");
+      byId("mission-alert-summary").textContent =
+        `${alertHistory.total} alertas no período; a mostrar até ${alertHistory.items.length}.`;
+      if (!alertHistory.items.length) {
+        container.innerHTML = '<p class="dataset-status">Não há alertas registados neste período. Isto não confirma ausência de risco.</p>';
+        return;
+      }
+      container.innerHTML = alertHistory.items.map(alert => {
+        const label = state.indicatorCatalog.find(item => item.metric === alert.metric)?.display_name
+          || alert.metric.replace(/_/g, " ");
+        const direction = alert.direction === "below_minimum" ? "abaixo do mínimo" : "acima do máximo";
+        const acknowledgement = alert.acknowledged_by_current_user
+          ? "<span class=\"badge\">Receção confirmada</span>"
+          : `<button class="button secondary" type="button" data-ack-alert="${alert.alert_id}">Confirmar receção</button>`;
+        return `<article class="mission-alert">
+          <h3>${escapeHtml(label)} — valor ${escapeHtml(direction)} da regra</h3>
+          <p><strong>${formatNumber(alert.value)} ${escapeHtml(alert.unit)}</strong> · limite configurado: ${formatNumber(alert.configured_limit)} ${escapeHtml(alert.unit)}</p>
+          <p>${escapeHtml(alert.rationale)}</p>
+          <p>Medido: ${escapeHtml(formatDate(alert.measured_at))} · Regra ${escapeHtml(alert.rule_id)} v${alert.rule_version}. Fonte: ${escapeHtml(alert.source_reference)}</p>
+          <p>Confirmações de receção: ${alert.acknowledgement_count}. Esta ação confirma apenas a receção, não a análise ou resolução.</p>
+          ${acknowledgement}
+        </article>`;
+      }).join("");
+    }
+
+    async function missionApi(path, token, options = {}) {
+      const response = await fetch(path, {
+        method: options.method || "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+          ...(options.body ? { "Content-Type": "application/json" } : {})
+        },
+        ...(options.body ? { body: JSON.stringify(options.body) } : {})
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        const detail = body && typeof body.detail === "string" ? body.detail : `Erro HTTP ${response.status}.`;
+        throw new Error(detail);
+      }
+      return body;
+    }
+
+    async function loadMissionDashboard(start, end) {
+      const astronautId = byId("mission-astronaut").value.trim();
+      const params = new URLSearchParams({
+        astronaut_id: astronautId,
+        start: start.toISOString(),
+        end: end.toISOString()
+      });
+      const [history, coverage, alerts] = await Promise.all([
+        missionApi(`/api/v1/readings?${params}&limit=100`, state.missionToken),
+        missionApi(`/api/v1/readings/coverage?${params}`, state.missionToken),
+        missionApi(`/api/v1/alerts?${params}&limit=100`, state.missionToken)
+      ]);
+      renderMissionReadings(history, coverage);
+      renderMissionAlerts(alerts);
+      byId("mission-results").hidden = false;
+    }
+
+    function renderMissionTrendOptions() {
+      const select = byId("mission-trend-metric");
+      const previousMetric = select.value;
+      select.innerHTML = state.indicatorCatalog.map(indicator =>
+        `<option value="${escapeHtml(indicator.metric)}">${escapeHtml(indicator.display_name)} (${escapeHtml(indicator.unit)})</option>`
+      ).join("");
+      if (state.indicatorCatalog.some(indicator => indicator.metric === previousMetric)) {
+        select.value = previousMetric;
+      }
+      byId("mission-glucose-context-field").hidden = select.value !== "blood_glucose";
+    }
+
+    async function loadMissionTrend(event) {
+      event.preventDefault();
+      if (!state.missionToken) {
+        byId("mission-trend-result").textContent = "Carregue primeiro o resumo autenticado para autorizar a análise.";
+        return;
+      }
+      const metric = byId("mission-trend-metric").value;
+      const start = new Date(byId("mission-start").value);
+      const end = new Date(byId("mission-end").value);
+      if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start > end) {
+        byId("mission-trend-result").textContent = "Indique um período válido antes de calcular a tendência.";
+        return;
+      }
+      const params = new URLSearchParams({
+        astronaut_id: byId("mission-astronaut").value.trim(),
+        metric,
+        start: start.toISOString(),
+        end: end.toISOString()
+      });
+      if (metric === "blood_glucose") {
+        const context = byId("mission-glucose-context").value;
+        if (!context) {
+          byId("mission-trend-result").textContent = "Selecione o contexto da glicemia para evitar misturar contextos.";
+          return;
+        }
+        params.set("glucose_context", context);
+      }
+      byId("mission-trend-load").disabled = true;
+      byId("mission-trend-result").textContent = "A calcular estatísticas descritivas…";
+      try {
+        const analysis = await missionApi(`/api/v1/readings/analysis?${params}`, state.missionToken);
+        const slope = analysis.trend_slope_per_day === null
+          ? "Inclinação: indisponível para este conjunto de amostras."
+          : `Inclinação linear: ${formatNumber(analysis.trend_slope_per_day)} ${analysis.unit}/dia.`;
+        byId("mission-trend-result").textContent =
+          `${analysis.sample_count} amostras · mínimo ${formatNumber(analysis.minimum)} · máximo ${formatNumber(analysis.maximum)} · média ${formatNumber(analysis.mean)} · mediana ${formatNumber(analysis.median)} · último ${formatNumber(analysis.latest_value)} ${analysis.unit}. ${slope} Estatística descritiva, não diagnóstico.`;
+      } catch (error) {
+        byId("mission-trend-result").textContent = `Análise indisponível: ${error.message}`;
+      } finally {
+        byId("mission-trend-load").disabled = false;
+      }
+    }
+
+    function localDateTimeValue(date) {
+      const offset = date.getTimezoneOffset() * 60000;
+      return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+    }
+
+    function initializeMissionPeriod() {
+      const now = new Date();
+      byId("mission-end").value = localDateTimeValue(now);
+      byId("mission-start").value = localDateTimeValue(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000));
+      byId("offline-measured-at").value = localDateTimeValue(now);
+    }
+
+    function openOfflineDatabase() {
+      if (!("indexedDB" in window)) {
+        return Promise.reject(new Error("Este navegador não disponibiliza armazenamento local IndexedDB."));
+      }
+      if (state.offlineDb) return state.offlineDb;
+      state.offlineDb = new Promise((resolve, reject) => {
+        const request = indexedDB.open("soma-health-outbox", 1);
+        request.onupgradeneeded = () => {
+          const database = request.result;
+          if (!database.objectStoreNames.contains("outbox")) {
+            database.createObjectStore("outbox", { keyPath: "queue_id" });
+          }
+          if (!database.objectStoreNames.contains("metadata")) {
+            database.createObjectStore("metadata", { keyPath: "key" });
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error("Não foi possível abrir a fila local."));
+      }).catch(error => {
+        state.offlineDb = null;
+        throw error;
+      });
+      return state.offlineDb;
+    }
+
+    function transactionComplete(transaction) {
+      return new Promise((resolve, reject) => {
+        transaction.oncomplete = resolve;
+        transaction.onabort = () => reject(transaction.error || new Error("A transação local foi cancelada."));
+        transaction.onerror = () => reject(transaction.error || new Error("Falha na transação local."));
+      });
+    }
+
+    async function readOfflineRecords() {
+      const database = await openOfflineDatabase();
+      const transaction = database.transaction("outbox", "readonly");
+      const completion = transactionComplete(transaction);
+      const request = transaction.objectStore("outbox").getAll();
+      const records = await new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error("Não foi possível ler a fila local."));
+      });
+      await completion;
+      return records;
+    }
+
+    async function saveOfflineReading(reading, sourceDeviceId) {
+      const records = await readOfflineRecords();
+      const queuedMeasurements = records.reduce((count, item) => count + item.measurements.length, 0);
+      if (queuedMeasurements + reading.measurements.length > 1000) {
+        throw new Error("A fila local atingiu o limite de 1000 medições pendentes.");
+      }
+      const database = await openOfflineDatabase();
+      const transaction = database.transaction(["outbox", "metadata"], "readwrite");
+      const completion = transactionComplete(transaction);
+      const metadata = transaction.objectStore("metadata");
+      const sequenceKey = `sequence:${sourceDeviceId}`;
+      const sequenceRequest = metadata.get(sequenceKey);
+      sequenceRequest.onsuccess = () => {
+        let sequence = sequenceRequest.result?.next_sequence || 1;
+        const queuedReading = {
+          ...reading,
+          queue_id: crypto.randomUUID(),
+          source_device_id: sourceDeviceId,
+          measurements: reading.measurements.map(measurement => ({
+            ...measurement,
+            reading_id: crypto.randomUUID(),
+            sequence_number: sequence++
+          }))
+        };
+        metadata.put({ key: sequenceKey, next_sequence: sequence });
+        transaction.objectStore("outbox").put(queuedReading);
+      };
+      sequenceRequest.onerror = () => transaction.abort();
+      await completion;
+    }
+
+    async function removeAcknowledgedMeasurements(acknowledgedIds) {
+      const acknowledged = new Set(acknowledgedIds);
+      const database = await openOfflineDatabase();
+      const transaction = database.transaction("outbox", "readwrite");
+      const completion = transactionComplete(transaction);
+      const store = transaction.objectStore("outbox");
+      const request = store.getAll();
+      request.onsuccess = () => request.result.forEach(record => {
+        record.measurements = record.measurements.filter(item => !acknowledged.has(item.reading_id));
+        if (record.measurements.length) store.put(record);
+        else store.delete(record.queue_id);
+      });
+      request.onerror = () => transaction.abort();
+      await completion;
+    }
+
+    async function renderOfflineQueue() {
+      const records = await readOfflineRecords();
+      const count = records.reduce((total, record) => total + record.measurements.length, 0);
+      byId("offline-queue-summary").textContent = `${count} medições pendentes em ${records.length} registos locais. A fila não é cifrada pela aplicação.`;
+      byId("offline-queue-list").innerHTML = records.map(record => {
+        const labels = record.measurements.map(measurement => {
+          const label = state.indicatorCatalog.find(item => item.metric === measurement.metric)?.display_name
+            || measurement.metric.replace(/_/g, " ");
+          return `${escapeHtml(label)}: ${formatNumber(measurement.value)}`;
+        }).join(" · ");
+        return `<article class="offline-queue-item">
+          <strong>${escapeHtml(record.astronaut_id)} · ${escapeHtml(formatDate(record.measured_at))}</strong>
+          <span>${labels}</span>
+          <span>Dispositivo ${escapeHtml(record.source_device_id)} · ${record.measurements.length} indicadores</span>
+        </article>`;
+      }).join("");
+    }
+
+    function renderOfflineMetricFields() {
+      const container = byId("offline-metric-fields");
+      if (!state.indicatorCatalog.length) {
+        container.innerHTML = '<p class="dataset-status">Catálogo indisponível; ligue-se à API antes de preparar o primeiro registo offline.</p>';
+        return;
+      }
+      container.innerHTML = state.indicatorCatalog.map(indicator => {
+        const integerMetric = ["systolic_blood_pressure", "diastolic_blood_pressure", "heart_rate", "mood"].includes(indicator.metric);
+        return `<div class="field">
+          <label for="offline-${escapeHtml(indicator.metric)}">${escapeHtml(indicator.display_name)} (${escapeHtml(indicator.unit)})</label>
+          <input id="offline-${escapeHtml(indicator.metric)}" type="number" inputmode="decimal"
+            min="${indicator.technical_validation_range[0]}" max="${indicator.technical_validation_range[1]}"
+            step="${integerMetric ? "1" : "any"}" data-offline-metric="${escapeHtml(indicator.metric)}">
+        </div>`;
+      }).join("");
+    }
+
+    async function queueOfflineReading(event) {
+      event.preventDefault();
+      const deviceId = byId("offline-device-id").value.trim();
+      const astronautId = byId("offline-astronaut-id").value.trim();
+      const measuredAt = new Date(byId("offline-measured-at").value);
+      const status = byId("offline-record-status");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(deviceId)) {
+        status.textContent = "O ID do dispositivo tem de ser um UUID provisionado.";
+        return;
+      }
+      if (!astronautId || !Number.isFinite(measuredAt.getTime())) {
+        status.textContent = "Indique um tripulante e um instante válido.";
+        return;
+      }
+      const measurements = [...document.querySelectorAll("[data-offline-metric]")]
+        .filter(input => input.value !== "")
+        .map(input => ({ metric: input.dataset.offlineMetric, value: Number(input.value) }));
+      if (!measurements.length) {
+        status.textContent = "Introduza pelo menos um indicador.";
+        return;
+      }
+      const integerMetrics = new Set(["systolic_blood_pressure", "diastolic_blood_pressure", "heart_rate", "mood"]);
+      for (const measurement of measurements) {
+        const indicator = state.indicatorCatalog.find(item => item.metric === measurement.metric);
+        const [minimum, maximum] = indicator.technical_validation_range;
+        if (!Number.isFinite(measurement.value) || measurement.value < minimum || measurement.value > maximum
+          || (integerMetrics.has(measurement.metric) && !Number.isInteger(measurement.value))) {
+          status.textContent = `${indicator.display_name}: valor inválido para a faixa técnica ${minimum}–${maximum} ${indicator.unit}.`;
+          return;
+        }
+      }
+      const metrics = new Set(measurements.map(item => item.metric));
+      if (metrics.has("systolic_blood_pressure") !== metrics.has("diastolic_blood_pressure")) {
+        status.textContent = "A pressão arterial requer valores sistólico e diastólico em conjunto.";
+        return;
+      }
+      if (metrics.has("systolic_blood_pressure")) {
+        const systolic = measurements.find(item => item.metric === "systolic_blood_pressure").value;
+        const diastolic = measurements.find(item => item.metric === "diastolic_blood_pressure").value;
+        if (diastolic >= systolic) {
+          status.textContent = "A pressão diastólica tem de ser inferior à sistólica.";
+          return;
+        }
+      }
+      const glucoseContext = byId("offline-glucose-context").value || null;
+      if (metrics.has("blood_glucose") !== Boolean(glucoseContext)) {
+        status.textContent = "Selecione o contexto da glicemia apenas quando incluir uma medição de glicemia.";
+        return;
+      }
+      const reading = {
+        astronaut_id: astronautId,
+        measured_at: measuredAt.toISOString(),
+        measurements,
+        glucose_context: glucoseContext,
+        declared_origin: "manual"
+      };
+      byId("offline-save-reading").disabled = true;
+      status.textContent = "A guardar no dispositivo…";
+      try {
+        await saveOfflineReading(reading, deviceId);
+        await renderOfflineQueue();
+        [...document.querySelectorAll("[data-offline-metric]")].forEach(input => { input.value = ""; });
+        byId("offline-glucose-context").value = "";
+        status.textContent = "Medição guardada localmente. Ainda não foi enviada ao serviço.";
+      } catch (error) {
+        status.textContent = `Não foi possível guardar a medição: ${error.message}`;
+      } finally {
+        byId("offline-save-reading").disabled = false;
+      }
+    }
+
+    async function syncOfflineQueue(event) {
+      event.preventDefault();
+      const tokenInput = byId("offline-device-token");
+      const token = tokenInput.value.trim();
+      const deviceId = byId("offline-device-id").value.trim();
+      const status = byId("offline-sync-status");
+      if (!token || !deviceId) {
+        status.textContent = "Indique o token de dispositivo e o respetivo ID provisionado.";
+        return;
+      }
+      if (!navigator.onLine) {
+        status.textContent = "Sem ligação de rede. A fila permanece guardada neste dispositivo.";
+        return;
+      }
+      tokenInput.value = "";
+      byId("offline-sync").disabled = true;
+      let acceptedCount = 0;
+      try {
+        const queue = (await readOfflineRecords())
+          .filter(record => record.source_device_id === deviceId)
+          .sort((left, right) => left.measurements[0].sequence_number - right.measurements[0].sequence_number);
+        if (!queue.length) {
+          status.textContent = "Não há medições pendentes para este dispositivo.";
+          return;
+        }
+        let offset = 0;
+        while (offset < queue.length) {
+          const batchReadings = [];
+          let measurementCount = 0;
+          while (offset < queue.length && measurementCount + queue[offset].measurements.length <= 100) {
+            const { queue_id, source_device_id, ...reading } = queue[offset++];
+            batchReadings.push(reading);
+            measurementCount += reading.measurements.length;
+          }
+          if (!batchReadings.length) throw new Error("O próximo registo excede o limite do lote de sincronização.");
+          const acknowledgement = await missionApi("/api/v1/sync/readings", token, {
+            method: "POST",
+            body: {
+              batch_id: crypto.randomUUID(),
+              source_device_id: deviceId,
+              readings: batchReadings
+            }
+          });
+          const acceptedIds = acknowledgement.items
+            .filter(item => item.status === "accepted" || item.status === "already_received")
+            .map(item => item.reading_id);
+          await removeAcknowledgedMeasurements(acceptedIds);
+          acceptedCount += acceptedIds.length;
+          await renderOfflineQueue();
+        }
+        status.textContent = `${acceptedCount} medições confirmadas pelo serviço. A confirmação indica persistência a bordo, não entrega ao solo.`;
+      } catch (error) {
+        status.textContent = `${acceptedCount} medições confirmadas antes da falha; os restantes itens continuam na fila: ${error.message}`;
+      } finally {
+        byId("offline-sync").disabled = false;
+      }
+    }
+
+    function updateOfflineConnectionStatus() {
+      byId("offline-connection-status").textContent = navigator.onLine
+        ? "Ligação disponível; sincronização continua a ser iniciada manualmente."
+        : "Sem ligação de rede; as medições ficam apenas na fila local.";
+    }
+
+    async function cacheIndicatorCatalog(indicators) {
+      const database = await openOfflineDatabase();
+      const transaction = database.transaction("metadata", "readwrite");
+      const completion = transactionComplete(transaction);
+      transaction.objectStore("metadata").put({ key: "indicatorCatalog", value: indicators });
+      await completion;
+    }
+
+    async function readCachedIndicatorCatalog() {
+      const database = await openOfflineDatabase();
+      const transaction = database.transaction("metadata", "readonly");
+      const completion = transactionComplete(transaction);
+      const request = transaction.objectStore("metadata").get("indicatorCatalog");
+      const cached = await new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result?.value || null);
+        request.onerror = () => reject(request.error || new Error("Não foi possível ler o catálogo local."));
+      });
+      await completion;
+      return Array.isArray(cached) ? cached : null;
+    }
+
+    async function loadIndicatorCatalog() {
+      let indicators;
+      let usingCache = false;
+      try {
+        const response = await fetch(INDICATORS_URL, { headers: { Accept: "application/json" } });
+        const body = await response.json().catch(() => []);
+        if (!response.ok) {
+          throw new Error(body && typeof body.detail === "string" ? body.detail : `Erro HTTP ${response.status}.`);
+        }
+        indicators = Array.isArray(body) ? body : [];
+      } catch (error) {
+        try {
+          indicators = await readCachedIndicatorCatalog();
+          if (!indicators) throw error;
+          usingCache = true;
+        } catch (cacheError) {
+          byId("indicator-groups").innerHTML = `<p class="dataset-status">Não foi possível carregar o catálogo de indicadores: ${escapeHtml(cacheError.message)}</p>`;
+          renderOfflineMetricFields();
+          byId("offline-record-status").textContent = `Fila offline indisponível: ${cacheError.message}`;
+          return;
+        }
+      }
+      state.indicatorCatalog = indicators;
+      renderIndicatorFilters();
+      renderMissionOverview();
+      renderIndicatorGroups(indicators);
+      renderMissionTrendOptions();
+      renderOfflineMetricFields();
+      if (usingCache) {
+        byId("indicator-groups").insertAdjacentHTML("afterbegin", '<p class="dataset-status">A mostrar catálogo local em cache; atualização indisponível.</p>');
+      } else {
+        try {
+          await cacheIndicatorCatalog(indicators);
+        } catch (error) {
+          byId("offline-record-status").textContent = `Catálogo disponível, mas não foi possível preparar o armazenamento offline: ${error.message}`;
+        }
+      }
+      try {
+        await renderOfflineQueue();
+      } catch (error) {
+        byId("offline-queue-summary").textContent = `Fila local indisponível: ${error.message}`;
+      }
+    }
+
     function renderDataset(dataset) {
       state.dataset = dataset;
       if (!dataset.metrics.length) throw new Error("O conjunto NASA não contém os marcadores esperados.");
@@ -650,13 +1633,91 @@
     document.addEventListener("click", event => {
       const navButton = event.target.closest("[data-view]");
       if (navButton) setView(navButton.dataset.view);
+      const filterButton = event.target.closest("[data-indicator-filter]");
+      if (filterButton) {
+        state.indicatorFilter = filterButton.dataset.indicatorFilter;
+        renderIndicatorFilters();
+        renderIndicatorGroups(state.indicatorCatalog);
+      }
       if (event.target.closest("#retry") || event.target.closest("#refresh")) loadDataset();
+    });
+    byId("mission-dashboard-form").addEventListener("submit", async event => {
+      event.preventDefault();
+      const tokenInput = byId("mission-token");
+      const token = tokenInput.value.trim();
+      const start = new Date(byId("mission-start").value);
+      const end = new Date(byId("mission-end").value);
+      if (!token || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start > end) {
+        byId("mission-status").textContent = "Indique token, tripulante e período válido (início anterior ou igual ao fim).";
+        return;
+      }
+      state.missionToken = token;
+      tokenInput.value = "";
+      byId("mission-load").disabled = true;
+      byId("mission-status").textContent = "A consultar dados autorizados…";
+      byId("mission-results").hidden = true;
+      try {
+        await loadMissionDashboard(start, end);
+        byId("mission-status").textContent = "Resumo carregado. Os dados permanecem sujeitos ao escopo e às permissões do token.";
+      } catch (error) {
+        state.missionToken = "";
+        byId("mission-status").textContent = `Não foi possível carregar o resumo: ${error.message}`;
+      } finally {
+        byId("mission-load").disabled = false;
+      }
+    });
+    byId("mission-trend-form").addEventListener("submit", loadMissionTrend);
+    byId("mission-trend-metric").addEventListener("change", event => {
+      byId("mission-glucose-context-field").hidden = event.target.value !== "blood_glucose";
+      if (event.target.value !== "blood_glucose") byId("mission-glucose-context").value = "";
+    });
+    document.addEventListener("click", async event => {
+      const acknowledgeButton = event.target.closest("[data-ack-alert]");
+      if (!acknowledgeButton) return;
+      if (!state.missionToken) {
+        byId("mission-status").textContent = "Por segurança, volte a carregar o painel com o token para confirmar a receção.";
+        return;
+      }
+      acknowledgeButton.disabled = true;
+      try {
+        await missionApi(`/api/v1/alerts/${encodeURIComponent(acknowledgeButton.dataset.ackAlert)}/acknowledge`, state.missionToken, {
+          method: "POST"
+        });
+        const start = new Date(byId("mission-start").value);
+        const end = new Date(byId("mission-end").value);
+        await loadMissionDashboard(start, end);
+        byId("mission-status").textContent = "Receção do alerta confirmada. Isto não significa que esteja resolvido.";
+      } catch (error) {
+        acknowledgeButton.disabled = false;
+        byId("mission-status").textContent = `Não foi possível confirmar a receção: ${error.message}`;
+      }
+    });
+    byId("mission-clear").addEventListener("click", () => {
+      clearMissionSession();
+      byId("mission-status").textContent = "Acesso terminado; token e dados do painel foram removidos da memória desta página.";
+    });
+    byId("offline-reading-form").addEventListener("submit", queueOfflineReading);
+    byId("offline-sync-form").addEventListener("submit", syncOfflineQueue);
+    window.addEventListener("online", updateOfflineConnectionStatus);
+    window.addEventListener("offline", updateOfflineConnectionStatus);
+    initializeMissionPeriod();
+    updateOfflineConnectionStatus();
+    renderOfflineQueue().catch(error => {
+      byId("offline-queue-summary").textContent = `Fila local indisponível: ${error.message}`;
     });
     byId("metric-select").addEventListener("change", event => {
       state.metricKey = event.target.value;
       if (state.dataset) renderMetric();
     });
+    loadIndicatorCatalog();
     loadDataset();
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/service-worker.js").catch(error => {
+        byId("offline-connection-status").textContent = `Painel offline não preparado: ${error.message}`;
+      });
+    } else {
+      byId("offline-connection-status").textContent = "Este navegador não suporta o modo offline da aplicação.";
+    }
   </script>
 </body>
 </html>

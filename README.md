@@ -18,9 +18,30 @@ O painel web fica disponível em `http://127.0.0.1:8000/`.
 Por omissão, a base de dados é criada em `data/health_monitoring.sqlite3`.
 Define `HEALTH_DB_PATH` para escolher outro caminho.
 
+## Visão operativa do painel
+
+O painel expõe uma visão de missão em etapas: catálogo de indicadores por sistema
+corporal, suporte à tendência, aviso explícito de natureza ilustrativa e resumo de
+operação/apoio ao solo para manter o contexto do tripulante sem confundir limites
+técnicos com interpretação clínica. A continuidade offline continua a ser um
+estado de sincronização e apoio local, não uma decisão clínica.
+
+## Etapas priorizadas do produto
+
+1. Base operacional: autenticação, permissões, leitura e registro de medições.
+2. Catálogo de indicadores e contexto de missão: sistema corporal, tendência, apoio ao solo.
+3. Painel autenticado por astronauta: medições recentes, tendências descritivas,
+   cobertura observada, alertas por período e confirmação de receção.
+   Implementado; requer token já emitido pela autoridade da missão e ainda
+   precisa de validação ponta a ponta.
+4. Fila local IndexedDB e sincronização manual pelo endpoint v1. Implementado
+   como protótipo; não tem cifragem local nem reconciliação terrestre na interface.
+5. Validação de UX, acessibilidade, testes end-to-end e readiness para operação.
+   Pendente; não declarar pronto para dados reais ou uso em missão.
+
 ## Painel web
 
-O painel é de consulta pública e não apresenta telas de login ou cadastro.
+A secção “Explorar dados” é de consulta pública e não apresenta telas de login ou cadastro.
 Mostra dados agregados obtidos diretamente do NASA OSDR no pedido:
 OSD-575 (Inspiration4), painel metabólico sérico. Inclui glicose, albumina,
 creatinina e ALT nas unidades da fonte, agrupadas pelos pontos de recolha do
@@ -37,6 +58,18 @@ O deploy de demonstração no Vercel usa o entrypoint Python em `main.py`.
 Como o SQLite em `/tmp` não é persistente e o ambiente publicado não tem
 bootstrap de missão, este deploy serve a experiência pública NASA e as rotas
 públicas; não use para guardar nem consultar dados reais de saúde.
+
+O separador “Painel da missão” requer um token de utilizador emitido pela
+autoridade de identidade configurada, com escopos para o astronauta e permissão
+`readings:read`. A confirmação de alertas também requer `alerts:acknowledge`.
+O token é mantido apenas em memória durante o acesso, pode ser removido pelo
+botão “Terminar acesso” e não é guardado em armazenamento do navegador. O painel
+exibe medições recentes, contagens observadas e alertas já persistidos; não
+calcula diagnóstico nem presume cadência de recolha. Confirmar um alerta só
+regista receção, não resolução.
+A análise de tendência chama a API descritiva existente; para glicemia, é
+obrigatório escolher contexto. A inclinação, média e restantes estatísticas não
+são interpretação clínica.
 
 ## Backup da base de dados
 
@@ -78,7 +111,7 @@ recuperação; restaurações periódicas e medidas de RPO/RTO continuam necess�
   credenciais limitadas pela identidade e delegação da missão.
 - `POST /api/v1/auth/refresh` — roda um refresh token de uso único.
 - `POST /api/v1/auth/revoke` — revoga a família associada ao refresh token.
-- `GET /api/v1/indicators` — indicadores, unidades e limites técnicos de entrada.
+- `GET /api/v1/indicators` — indicadores, nomes legíveis para UI (`display_name`), ordem estável para renderização (`sort_order`), unidades, limites técnicos de entrada, sistema corporal (cardiovascular, metabólico, recuperação, bem-estar, respiratório, termorregulação), suporte a tendência e limiares clínicos marcados como ilustrativos; não constituem diagnóstico nem critério de aptidão e têm referência explícita ao facto de não haver fonte clínica validada neste deployment.
 - `GET /api/v1/scientific-data/public/osdr/inspiration4/cmp` — resumo agregado
   dos dados do ficheiro público CMP do estudo NASA OSD-575; não requer login,
   não inclui identificadores de amostra e não alimenta leituras/alertas.
@@ -381,8 +414,16 @@ TLS/mTLS, proteção no gateway e controlos operacionais na missão.
 
 ## Sincronização offline (interface do backend)
 
-O cliente offline deve guardar cada medição numa fila local durável antes de a
-considerar gravada. Cada medição enviada precisa de um `reading_id` UUID criado
+O separador “Registo offline” guarda medições numa fila IndexedDB no navegador e
+envia-as manualmente pelo endpoint v1 quando há ligação. A fila persiste entre
+visitas no mesmo perfil do navegador, mas não é cifrada pela aplicação; use
+somente um dispositivo gerido e aprovado e não introduza dados reais neste
+protótipo. Não há sincronização automática nem reconciliação com o sistema
+terrestre na interface. O service worker mantém apenas o shell HTML; pedidos
+`/api/*` e respetivas respostas nunca são guardados em cache. O token de
+dispositivo é pedido no momento do envio e não é persistido.
+
+Cada medição enviada precisa de um `reading_id` UUID criado
 no dispositivo; cada medição tem um `sequence_number` crescente, único por
 dispositivo. Cada lote inclui um `batch_id` e `source_device_id` UUID. O endpoint
 aceita até 100 medições por lote. Pode reenviar o mesmo lote após timeout: o
@@ -393,6 +434,9 @@ medição, resulta em `409 Conflict`. O lote, o recibo e as medições são grav
 na mesma transação; se houver conflito, nenhum deles é confirmado. O cliente só
 deve retirar da fila as medições explicitamente confirmadas depois da resposta
 bem-sucedida; deve manter o lote para repetição após timeout, desconexão ou erro.
+Na interface protótipo, o `batch_id` não é persistido: após resposta ambígua, a
+fila é reenviada com novos IDs de lote, preservando `reading_id` e sequência.
+O serviço identifica as medições já persistidas como `already_received`.
 
 Após timeout ou perda da resposta, o dispositivo pode consultar
 `GET /api/v1/sync/batches/{batch_id}` com o mesmo token de dispositivo. O estado
@@ -515,8 +559,8 @@ publique o endpoint por um servidor FastAPI/Uvicorn genérico. Certificados,
 chaves, ACLs, confiança das CAs e identidade do cliente devem ser provisionados
 por canal aprovado.
 
-Esta entrega não implementa a fila durável do cliente/PWA, provisionamento ou
-rotação administrativa de identidades e certificados, cifragem em repouso,
+O protótipo inclui fila local do cliente/PWA, mas não implementa cifragem local,
+provisionamento ou rotação administrativa de identidades e certificados,
 política de retenção nem reconciliação entre múltiplas fontes. Os UUIDs de
 dispositivo e identificadores enviados pelo cliente são metadados; a identidade
 do dispositivo é verificada pelo token assinado.

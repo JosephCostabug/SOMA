@@ -220,11 +220,50 @@ class MonitoringAlertRuleVersion(BaseModel):
     expected_version: int = Field(ge=1, strict=True)
 
 
+AlertApprovalScope = Literal["clinical", "operational"]
+
+
+class MonitoringAlertApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    protocol_reference: str = Field(min_length=1, max_length=500)
+    source_reference: str = Field(min_length=1, max_length=500)
+    approval_version: str = Field(min_length=1, max_length=100)
+    scope: list[AlertApprovalScope] = Field(min_length=1, max_length=2)
+
+    @model_validator(mode="after")
+    def validate_approval_references(self) -> Self:
+        if any(
+            not value.strip()
+            for value in (
+                self.protocol_reference,
+                self.source_reference,
+                self.approval_version,
+            )
+        ):
+            raise ValueError("As referências e a versão de aprovação não podem estar vazias.")
+        if len(self.scope) != len(set(self.scope)):
+            raise ValueError("O âmbito da aprovação não pode conter duplicados.")
+        return self
+
+
+class MonitoringAlertApproval(BaseModel):
+    status: Literal["unapproved", "approved"] = "unapproved"
+    approval_authority: str | None = None
+    protocol_reference: str | None = None
+    source_reference: str | None = None
+    approval_version: str | None = None
+    approval_date: datetime | None = None
+    approved_rule_version: int | None = None
+    scope: list[AlertApprovalScope] = Field(default_factory=list)
+
+
 class MonitoringAlertRuleRecord(BaseModel):
     rule: MonitoringAlertRule
     active: bool
     updated_by: str
     updated_at: datetime
+    approval: MonitoringAlertApproval = Field(default_factory=MonitoringAlertApproval)
 
 
 class MonitoringAlertRuleHistory(BaseModel):
@@ -237,13 +276,22 @@ class MonitoringAlertRuleChange(BaseModel):
     mission_id: str
     rule_id: str
     version: int
-    action: Literal["provisioned", "created", "updated", "reactivated", "deactivated"]
+    action: Literal[
+        "provisioned",
+        "created",
+        "updated",
+        "reactivated",
+        "deactivated",
+        "approved",
+        "activated",
+    ]
     actor_id: str
     changed_at: datetime
     previous_active: bool | None
     current_active: bool
     previous_rule: MonitoringAlertRule | None
     current_rule: MonitoringAlertRule
+    approval: MonitoringAlertApproval | None = None
 
 
 class MonitoringAlertRuleAudit(BaseModel):
