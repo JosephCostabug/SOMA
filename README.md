@@ -41,11 +41,14 @@ estado de sincronização e apoio local, não uma decisão clínica.
 
 ## Painel web
 
-O ecrã inicial é o painel da missão: apresenta a figura humana esquemática,
-sistemas corporais, formulário de acesso, medições observadas, tendência
-descritiva e alertas. O mapa corporal é apenas uma forma de navegar pelo
-catálogo; não representa anatomia clínica nem localiza medições no corpo. A
-interface não apresenta fontes ou créditos dos conjuntos de dados nem páginas
+O ecrã inicial apresenta uma figura humana esquemática com tags interativas por
+sistema corporal. A figura 3D é um modelo visual para navegação; não representa
+anatomia clínica nem localiza medições no corpo. O botão de demonstração abre
+sem credenciais e mostra valores sintéticos gerados no navegador; eles não são
+enviados à API nem guardados. O acesso operacional continua disponível apenas
+com token autorizado, sem cadastro público.
+
+A interface não apresenta fontes ou créditos dos conjuntos de dados nem páginas
 de documentação; estes detalhes e a proveniência científica ficam neste README.
 Alertas podem manter referências de protocolos aprovados para garantir
 rastreabilidade operacional.

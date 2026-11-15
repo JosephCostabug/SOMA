@@ -1345,7 +1345,7 @@ def test_frontend_is_served_from_application_root():
         '<button type="button" data-view="mission" aria-current="page">'
         "Monitorização</button>"
     ) in response.text
-    assert 'id="human-map-svg-title"' in response.text
+    assert 'id="body-model-3d"' in response.text
     assert 'id="mission-body-systems"' in response.text
     assert 'id="mission-dashboard-form"' in response.text
     assert 'type="password"' in response.text
@@ -1359,6 +1359,22 @@ def test_frontend_is_served_from_application_root():
     assert 'navigator.serviceWorker.register("/service-worker.js")' in response.text
     assert "monitoring_support_not_diagnosis" in response.text
     assert "localStorage" not in response.text
+
+
+def test_frontend_exposes_synthetic_demo_and_interactive_body_map_without_signup():
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert 'id="demo-start"' in response.text
+    assert 'id="demo-dashboard"' in response.text
+    assert 'id="body-model-3d"' in response.text
+    assert 'data-body-hotspot=' in response.text
+    assert 'id="body-system-detail"' in response.text
+    assert "Demonstração com dados sintéticos" in response.text
+    assert "Cadastrar astronauta" not in response.text
+    assert 'id="mission-dashboard-form"' in response.text
+    assert "authorization:" in response.text.lower()
 
 
 def test_offline_service_worker_is_served_without_caching_api_responses():

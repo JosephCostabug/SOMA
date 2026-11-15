@@ -239,14 +239,15 @@
     .body-map-heading p { max-width: 54ch; margin: 0; color: var(--muted); font-size: 14px; }
     .body-map-layout {
       display: grid;
-      grid-template-columns: minmax(190px, .85fr) minmax(0, 1fr);
+      grid-template-columns: minmax(180px, .9fr) minmax(0, 1fr);
       align-items: center;
       gap: 14px;
       margin-top: 16px;
     }
     .human-figure {
+      position: relative;
       display: grid;
-      min-height: 340px;
+      min-height: 360px;
       place-items: center;
       overflow: hidden;
       margin: 0;
@@ -254,21 +255,81 @@
       border-radius: 14px;
       background: radial-gradient(ellipse at center, var(--surface-soft), var(--surface));
     }
-    .human-figure svg { display: block; width: min(100%, 300px); max-height: 400px; }
-    .body-silhouette { fill: var(--body-fill); stroke: var(--body-stroke); stroke-width: 2; }
-    .body-joint { fill: none; stroke: var(--body-stroke); stroke-width: 17; stroke-linecap: round; }
-    .body-marker { fill: var(--header); stroke: var(--surface); stroke-width: 3; }
-    .body-marker-label { fill: #fff; font: 800 10px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; }
+    .body-model-3d { position: relative; display: grid; width: 100%; min-height: 350px; place-items: center; perspective: 850px; }
+    .body-avatar-3d {
+      position: relative;
+      width: 160px;
+      height: 350px;
+      transform: rotateY(-14deg) rotateX(2deg);
+      transform-style: preserve-3d;
+      filter: drop-shadow(12px 12px 10px rgba(21, 34, 56, .22));
+    }
+    .body-avatar-3d::before {
+      position: absolute;
+      inset: 5px 10px 0;
+      border-radius: 48% 48% 25% 25%;
+      background: linear-gradient(90deg, #8496ae, #bdc9d8 42%, #7589a4);
+      content: "";
+      transform: translateZ(-22px) scale(.9);
+    }
+    .avatar-part {
+      position: absolute;
+      border: 1px solid rgba(67, 87, 116, .48);
+      background: linear-gradient(100deg, #879ab4 0%, #d7e0eb 42%, #a9b9cd 76%, #71849f 100%);
+      box-shadow: inset 9px 0 12px rgba(255, 255, 255, .4), inset -10px 0 14px rgba(46, 65, 92, .24);
+      transform-style: preserve-3d;
+    }
+    .avatar-head { top: 5px; left: 53px; width: 54px; height: 62px; border-radius: 48%; transform: translateZ(22px); }
+    .avatar-neck { top: 56px; left: 69px; width: 23px; height: 33px; border-radius: 9px; transform: translateZ(16px); }
+    .avatar-torso { top: 78px; left: 34px; width: 91px; height: 119px; border-radius: 42% 42% 28% 28% / 15% 15% 18% 18%; transform: translateZ(18px); }
+    .avatar-pelvis { top: 179px; left: 43px; width: 75px; height: 53px; border-radius: 25% 25% 40% 40%; transform: translateZ(14px); }
+    .avatar-arm-left, .avatar-arm-right { top: 91px; width: 25px; height: 111px; border-radius: 48%; }
+    .avatar-arm-left { left: 13px; transform: rotate(9deg) translateZ(4px); }
+    .avatar-arm-right { right: 12px; transform: rotate(-9deg) translateZ(4px); }
+    .avatar-leg-left, .avatar-leg-right { top: 220px; width: 32px; height: 76px; border-radius: 45% 45% 35% 35%; }
+    .avatar-leg-left { left: 45px; transform: translateZ(8px); }
+    .avatar-leg-right { right: 45px; transform: translateZ(8px); }
+    .avatar-shin-left, .avatar-shin-right { top: 281px; width: 26px; height: 63px; border-radius: 42% 42% 35% 35%; }
+    .avatar-shin-left { left: 48px; transform: translateZ(9px); }
+    .avatar-shin-right { right: 48px; transform: translateZ(9px); }
+    .avatar-foot-left, .avatar-foot-right { top: 325px; width: 34px; height: 16px; border-radius: 50% 35% 35% 45%; }
+    .avatar-foot-left { left: 38px; transform: rotate(-7deg) translateZ(12px); }
+    .avatar-foot-right { right: 38px; transform: rotate(7deg) translateZ(12px); }
+    .body-hotspots { position: absolute; inset: 0; }
+    .body-hotspot {
+      position: absolute;
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border: 2px solid var(--surface);
+      border-radius: 50%;
+      background: var(--header);
+      color: #fff;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 850;
+      box-shadow: 0 2px 8px rgba(16, 27, 44, .28);
+      transform: translate(-50%, -50%);
+    }
+    .body-hotspot:hover, .body-hotspot[aria-pressed="true"] { background: var(--accent); outline: 2px solid var(--accent); outline-offset: 2px; }
+    .body-hotspot-wellbeing { top: 16%; left: 50%; }
+    .body-hotspot-respiratory { top: 39%; left: 43%; }
+    .body-hotspot-cardiovascular { top: 42%; left: 59%; }
+    .body-hotspot-thermoregulation { top: 53%; left: 43%; }
+    .body-hotspot-metabolic { top: 56%; left: 59%; }
+    .body-hotspot-recovery { top: 76%; left: 50%; }
+    .figure-caption { padding: 0 12px 10px; color: var(--muted); font-size: 12px; text-align: center; }
     .body-system-list { display: grid; gap: 8px; }
     .body-system-button {
       display: grid;
-      grid-template-columns: 38px minmax(0, 1fr);
+      grid-template-columns: 34px minmax(0, 1fr);
       min-height: 54px;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       border: 1px solid var(--border);
       border-radius: 11px;
-      padding: 7px 10px;
+      padding: 6px 8px;
       background: var(--surface);
       color: var(--text);
       text-align: left;
@@ -280,8 +341,8 @@
     }
     .body-system-code {
       display: grid;
-      width: 36px;
-      height: 36px;
+      width: 32px;
+      height: 32px;
       place-items: center;
       border-radius: 50%;
       background: var(--accent-soft);
@@ -291,10 +352,23 @@
     }
     .body-system-copy { min-width: 0; }
     .body-system-copy strong, .body-system-copy span { display: block; }
-    .body-system-copy strong { font-size: 14px; }
-    .body-system-copy span { color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .body-system-copy strong { font-size: 13px; line-height: 1.25; }
+    .body-system-copy span { color: var(--muted); font-size: 11px; line-height: 1.3; }
     .body-map-status { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
+    .body-system-detail { margin-top: 14px; border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--surface-soft); }
+    .body-system-detail p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+    .body-system-detail-values { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .body-system-detail-value { border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; background: var(--surface); font-size: 13px; }
     .mission-query-card .mission-form { grid-template-columns: 1fr 1fr; }
+    .demo-entry { display: grid; gap: 10px; margin-top: 16px; }
+    .demo-entry p { margin: 0; color: var(--muted); font-size: 14px; }
+    .mission-access { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
+    .mission-access summary { color: var(--accent); cursor: pointer; font-weight: 750; }
+    .demo-dashboard { display: grid; gap: 16px; margin-top: 18px; }
+    .demo-reading-card { min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--surface-soft); }
+    .demo-reading-card small { display: block; color: var(--muted); font-size: 10px; font-weight: 850; letter-spacing: .08em; }
+    .demo-reading-card strong { display: block; margin-top: 5px; font-size: 21px; font-variant-numeric: tabular-nums; }
+    .demo-reading-card span { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
     .mission-query-card .field:first-child { grid-column: 1 / -1; }
     .mission-query-card input { min-width: 0; }
     .mission-query-card .controls { grid-column: 1 / -1; flex-wrap: wrap; }
@@ -571,13 +645,18 @@
     footer { max-width: 1280px; margin: 0 auto; padding: 0 28px 30px; color: var(--muted); font-size: 12px; }
     footer p { margin: 5px 0; }
 
+    @media (max-width: 900px) {
+      .body-map-layout { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 9px; }
+    }
     @media (max-width: 760px) {
       .header-inner { min-height: 68px; padding: 10px 16px; }
       .main-nav { padding: 0 16px; }
       main { padding: 24px 16px 36px; }
       .page-heading { align-items: flex-start; }
       .mission-hero { grid-template-columns: 1fr; }
-      .body-map-layout { grid-template-columns: minmax(150px, .7fr) minmax(0, 1fr); }
+      .body-map-layout { grid-template-columns: minmax(0, 1fr); }
+      .body-system-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .body-model-3d { min-height: 360px; }
       .mission-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       footer { padding: 0 16px 24px; }
     }
@@ -599,9 +678,12 @@
       .mission-query-card .mission-form { grid-template-columns: 1fr; }
       .mission-query-card .field:first-child, .mission-query-card .controls { grid-column: auto; }
       .mission-query-card .controls .button { width: 100%; }
-      .body-map-layout { grid-template-columns: minmax(105px, .55fr) minmax(0, 1fr); gap: 8px; }
-      .human-figure { min-height: 300px; }
-      .human-figure svg { max-height: 320px; }
+      .body-map-layout { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+      .human-figure { min-height: 320px; }
+      .body-model-3d { min-height: 310px; }
+      .body-avatar-3d { transform: scale(.88) rotateY(-14deg) rotateX(2deg); transform-origin: center; }
+      .body-system-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .demo-dashboard .mission-indicators { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       th, td { padding: 10px; }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -618,7 +700,7 @@
         <span class="brand-mark" aria-hidden="true">S</span>
         <span class="brand-copy"><span class="brand-name">SOMA</span><span class="brand-subtitle">Monitorização da tripulação</span></span>
       </div>
-      <div class="header-meta"><span class="live-dot" aria-hidden="true"></span><span id="connection-status" role="status" aria-live="polite">A aguardar autenticação</span></div>
+      <div class="header-meta"><span class="live-dot" aria-hidden="true"></span><span id="connection-status" role="status" aria-live="polite">A aguardar acesso</span></div>
     </div>
     <nav class="main-nav" aria-label="Navegação principal">
       <button type="button" data-view="mission" aria-current="page">Monitorização</button>
@@ -647,67 +729,82 @@
           </div>
           <div class="body-map-layout">
             <figure class="human-figure">
-              <svg viewBox="0 0 300 500" role="img" aria-labelledby="human-map-svg-title human-map-svg-desc">
-                <title id="human-map-svg-title">Figura humana esquemática</title>
-                <desc id="human-map-svg-desc">Marcadores do catálogo para cardiovascular, respiratório, metabólico, termorregulação, recuperação e bem-estar.</desc>
-                <circle class="body-silhouette" cx="150" cy="48" r="24"></circle>
-                <path class="body-joint" d="M150 76 L150 95"></path>
-                <path class="body-silhouette" d="M127 91 Q150 81 173 91 L187 107 L178 224 Q150 239 122 224 L113 107 Z"></path>
-                <path class="body-joint" d="M121 105 L91 123 L69 179"></path>
-                <path class="body-joint" d="M179 105 L209 123 L231 179"></path>
-                <path class="body-joint" d="M137 226 L126 318 L116 424"></path>
-                <path class="body-joint" d="M163 226 L174 318 L184 424"></path>
-                <path class="body-joint" d="M109 426 L122 426"></path>
-                <path class="body-joint" d="M178 426 L191 426"></path>
-                <circle class="body-marker" cx="150" cy="61" r="15"></circle>
-                <text class="body-marker-label" x="150" y="61">BE</text>
-                <circle class="body-marker" cx="150" cy="142" r="15"></circle>
-                <text class="body-marker-label" x="150" y="142">RP</text>
-                <circle class="body-marker" cx="171" cy="161" r="15"></circle>
-                <text class="body-marker-label" x="171" y="161">CV</text>
-                <circle class="body-marker" cx="150" cy="191" r="15"></circle>
-                <text class="body-marker-label" x="150" y="191">TR</text>
-                <circle class="body-marker" cx="150" cy="257" r="15"></circle>
-                <text class="body-marker-label" x="150" y="257">MT</text>
-                <circle class="body-marker" cx="150" cy="347" r="15"></circle>
-                <text class="body-marker-label" x="150" y="347">RC</text>
-              </svg>
+              <div id="body-model-3d" class="body-model-3d" role="group" aria-label="Figura humana 3D esquemática e interativa">
+                <div class="body-avatar-3d" aria-hidden="true">
+                  <span class="avatar-part avatar-head"></span>
+                  <span class="avatar-part avatar-neck"></span>
+                  <span class="avatar-part avatar-torso"></span>
+                  <span class="avatar-part avatar-pelvis"></span>
+                  <span class="avatar-part avatar-arm-left"></span>
+                  <span class="avatar-part avatar-arm-right"></span>
+                  <span class="avatar-part avatar-leg-left"></span>
+                  <span class="avatar-part avatar-leg-right"></span>
+                  <span class="avatar-part avatar-shin-left"></span>
+                  <span class="avatar-part avatar-shin-right"></span>
+                  <span class="avatar-part avatar-foot-left"></span>
+                  <span class="avatar-part avatar-foot-right"></span>
+                </div>
+                <div id="body-hotspots" class="body-hotspots" role="group" aria-label="Selecionar sistema corporal"></div>
+              </div>
+              <figcaption class="figure-caption">Modelo 3D esquemático para navegação; não representa anatomia clínica nem localiza medições.</figcaption>
             </figure>
-            <div id="mission-body-systems" class="body-system-list" aria-label="Sistemas corporais e cobertura">
+            <div id="mission-body-systems" class="body-system-list" role="group" aria-label="Tags dos sistemas corporais">
               <p class="dataset-status">A carregar o catálogo de indicadores…</p>
             </div>
           </div>
+          <section id="body-system-detail" class="body-system-detail" aria-live="polite">
+            <h3 id="body-system-detail-title">Selecione uma região ou tag</h3>
+            <p id="body-system-detail-copy">Escolha um sistema para consultar os indicadores associados.</p>
+            <div id="body-system-detail-values" class="body-system-detail-values"></div>
+          </section>
           <p id="body-map-status" class="body-map-status" role="status" aria-live="polite">Carregue um resumo autorizado para ver a cobertura observada.</p>
         </section>
         <section class="card mission-query-card" aria-labelledby="mission-query-title">
-          <p class="eyebrow">Acesso protegido</p>
-          <h2 id="mission-query-title">Abrir painel do tripulante</h2>
-          <p>O token é usado apenas nesta sessão e não é guardado no navegador.</p>
-          <form id="mission-dashboard-form" class="mission-form">
-            <div class="field">
-              <label for="mission-token">Token de acesso</label>
-              <input id="mission-token" name="token" type="password" autocomplete="off" required>
-            </div>
-            <div class="field">
-              <label for="mission-astronaut">ID do tripulante</label>
-              <input id="mission-astronaut" name="astronaut" type="text" maxlength="100" autocomplete="off" required>
-            </div>
-            <div class="field">
-              <label for="mission-start">Início</label>
-              <input id="mission-start" name="start" type="datetime-local" required>
-            </div>
-            <div class="field">
-              <label for="mission-end">Fim</label>
-              <input id="mission-end" name="end" type="datetime-local" required>
-            </div>
-            <div class="controls">
-              <button id="mission-load" class="button" type="submit">Carregar painel</button>
-              <button id="mission-clear" class="button secondary" type="button">Terminar acesso</button>
-            </div>
-          </form>
-          <p id="mission-status" class="mission-state" role="status" aria-live="polite"></p>
+          <p class="eyebrow">Modo para avaliação</p>
+          <h2 id="mission-query-title">Explorar o painel</h2>
+          <div class="demo-entry">
+            <p>A demonstração abre sem conta nem token e usa apenas valores fictícios no navegador.</p>
+            <button id="demo-start" class="button" type="button">Iniciar demonstração</button>
+            <button id="demo-exit" class="button secondary" type="button" hidden>Terminar demonstração</button>
+            <p id="demo-status" class="mission-state" role="status" aria-live="polite"></p>
+          </div>
+          <details id="mission-access" class="mission-access">
+            <summary>Acesso operacional autorizado</summary>
+            <p>O token permanece apenas nesta sessão. Não há cadastro público.</p>
+            <form id="mission-dashboard-form" class="mission-form">
+              <div class="field">
+                <label for="mission-token">Token de acesso</label>
+                <input id="mission-token" name="token" type="password" autocomplete="off" required>
+              </div>
+              <div class="field">
+                <label for="mission-astronaut">ID do tripulante</label>
+                <input id="mission-astronaut" name="astronaut" type="text" maxlength="100" autocomplete="off" required>
+              </div>
+              <div class="field">
+                <label for="mission-start">Início</label>
+                <input id="mission-start" name="start" type="datetime-local" required>
+              </div>
+              <div class="field">
+                <label for="mission-end">Fim</label>
+                <input id="mission-end" name="end" type="datetime-local" required>
+              </div>
+              <div class="controls">
+                <button id="mission-load" class="button" type="submit">Carregar dados autorizados</button>
+                <button id="mission-clear" class="button secondary" type="button">Terminar acesso</button>
+              </div>
+            </form>
+            <p id="mission-status" class="mission-state" role="status" aria-live="polite"></p>
+          </details>
         </section>
       </div>
+      <section id="demo-dashboard" class="demo-dashboard" aria-labelledby="demo-dashboard-title" hidden>
+        <div class="notice" role="note">Demonstração com dados sintéticos — estes valores não pertencem a uma pessoa nem têm interpretação clínica.</div>
+        <section class="card">
+          <h2 id="demo-dashboard-title">Exemplo de check-in diário</h2>
+          <p class="dataset-status">Os cartões são gerados localmente e não são enviados nem guardados.</p>
+          <div id="demo-reading-cards" class="mission-indicators"></div>
+        </section>
+      </section>
       <div id="mission-results" class="mission-results" hidden>
         <section class="mission-summary" aria-label="Resumo do período">
           <article class="mission-summary-card"><small>Medições</small><strong id="summary-readings">—</strong><span>registos observados</span></article>
@@ -834,8 +931,10 @@
       indicatorCatalog: [],
       indicatorCatalogPromise: null,
       indicatorFilter: "all",
+      selectedBodySystem: "cardiovascular",
       missionCoverage: null,
       missionToken: "",
+      demoMode: false,
       offlineDb: null
     };
     const byId = id => document.getElementById(id);
@@ -852,6 +951,23 @@
       wellbeing: "Bem-estar",
       respiratory: "Respiratório"
     })[value] || value;
+    const bodySystems = [
+      { key: "cardiovascular", code: "CV", description: "Indicadores de coração e circulação." },
+      { key: "respiratory", code: "RP", description: "Indicadores respiratórios disponíveis no catálogo." },
+      { key: "metabolic", code: "MT", description: "Indicadores metabólicos disponíveis no catálogo." },
+      { key: "thermoregulation", code: "TR", description: "Indicadores de termorregulação." },
+      { key: "recovery", code: "RC", description: "Indicadores de sono e recuperação." },
+      { key: "wellbeing", code: "BE", description: "Indicadores de bem-estar." }
+    ];
+    const demoReadings = [
+      { system: "cardiovascular", label: "Pressão arterial", value: "118/76 mmHg" },
+      { system: "cardiovascular", label: "Frequência cardíaca", value: "71 bpm" },
+      { system: "respiratory", label: "Oxigenação", value: "97%" },
+      { system: "metabolic", label: "Glicemia", value: "94 mg/dL" },
+      { system: "thermoregulation", label: "Temperatura corporal", value: "36,8 °C" },
+      { system: "recovery", label: "Duração do sono", value: "7,2 horas" },
+      { system: "wellbeing", label: "Humor", value: "3/5" }
+    ];
     const formatDate = value => {
       if (!value) return "não indicada";
       const date = new Date(value);
@@ -875,7 +991,9 @@
       byId("summary-systems").textContent = "—";
       byId("summary-alerts").textContent = "—";
       byId("summary-astronaut").textContent = "—";
-      byId("body-map-status").textContent = "Carregue um resumo autorizado para ver a cobertura observada.";
+      byId("body-map-status").textContent = state.demoMode
+        ? "Demonstração ativa; a cobertura é fictícia e não vem da API."
+        : "Carregue um resumo autorizado para ver a cobertura observada.";
       state.missionCoverage = null;
       renderBodySystems();
     }
@@ -883,10 +1001,17 @@
     function clearMissionSession() {
       state.missionToken = "";
       state.indicatorFilter = "all";
+      state.selectedBodySystem = null;
+      state.demoMode = false;
+      byId("demo-dashboard").hidden = true;
+      byId("demo-reading-cards").innerHTML = "";
+      byId("demo-start").hidden = false;
+      byId("demo-exit").hidden = true;
+      byId("demo-status").textContent = "";
       clearMissionDashboardData();
       renderIndicatorFilters();
       renderIndicatorGroups(state.indicatorCatalog);
-      setConnectionStatus("A aguardar autenticação", "waiting");
+      setConnectionStatus("A aguardar acesso", "waiting");
     }
 
     function setConnectionStatus(message, connectionState) {
@@ -924,41 +1049,96 @@
       });
     }
 
-    const bodySystemCodes = {
-      wellbeing: "BE",
-      respiratory: "RP",
-      cardiovascular: "CV",
-      thermoregulation: "TR",
-      metabolic: "MT",
-      recovery: "RC"
-    };
-
     function renderBodySystems(coverage = null) {
       state.missionCoverage = coverage;
       const container = byId("mission-body-systems");
-      const systems = new Map();
-      state.indicatorCatalog.forEach(indicator => {
-        const key = indicator.body_system || "other";
-        systems.set(key, (systems.get(key) || []).concat(indicator));
-      });
-      if (!systems.size) {
-        container.innerHTML = '<p class="dataset-status">O catálogo de indicadores não está disponível.</p>';
+      const coverageByMetric = new Map((coverage?.indicators || []).map(item => [item.metric, item]));
+      const sortedSystems = [...bodySystems].sort((left, right) =>
+        labelForSystem(left.key).localeCompare(labelForSystem(right.key), "pt")
+      );
+      container.innerHTML = sortedSystems.map(system => {
+        const indicators = state.indicatorCatalog.filter(item => item.body_system === system.key);
+        const observed = indicators.filter(item =>
+          (coverageByMetric.get(item.metric)?.sample_count || 0) > 0
+        ).length;
+        const detail = coverage && indicators.length
+          ? `${observed} de ${indicators.length} indicadores com registos`
+          : indicators.length
+            ? `${indicators.length} indicadores no catálogo`
+            : "Explorar sistema";
+        return `<button class="body-system-button" type="button" data-body-system="${system.key}" aria-pressed="${state.selectedBodySystem === system.key}">
+            <span class="body-system-code" aria-hidden="true">${system.code}</span>
+            <span class="body-system-copy"><strong>${labelForSystem(system.key)}</strong><span>${detail}</span></span>
+          </button>`;
+      }).join("");
+      byId("body-hotspots").innerHTML = sortedSystems.map(system => `
+        <button class="body-hotspot body-hotspot-${system.key}" type="button"
+          data-body-hotspot="${system.key}" aria-label="Selecionar ${labelForSystem(system.key)}"
+          aria-pressed="${state.selectedBodySystem === system.key}">${system.code}</button>
+      `).join("");
+      renderBodySystemDetail();
+    }
+
+    function renderBodySystemDetail() {
+      const system = bodySystems.find(item => item.key === state.selectedBodySystem);
+      if (!system) {
+        byId("body-system-detail-title").textContent = "Selecione uma região ou tag";
+        byId("body-system-detail-copy").textContent = "Escolha um sistema para consultar os indicadores associados.";
+        byId("body-system-detail-values").innerHTML = "";
         return;
       }
-      const coverageByMetric = new Map((coverage?.indicators || []).map(item => [item.metric, item]));
-      container.innerHTML = [...systems.entries()]
-        .sort(([left], [right]) => labelForSystem(left).localeCompare(labelForSystem(right), "pt"))
-        .map(([system, indicators]) => {
-          const observed = indicators.filter(item => (coverageByMetric.get(item.metric)?.sample_count || 0) > 0).length;
-          const detail = coverage
-            ? `${observed} de ${indicators.length} indicadores com registos`
-            : `${indicators.length} indicadores no catálogo`;
-          const code = bodySystemCodes[system] || "SI";
-          return `<button class="body-system-button" type="button" data-body-system="${escapeHtml(system)}" aria-pressed="${state.indicatorFilter === system}">
-            <span class="body-system-code" aria-hidden="true">${code}</span>
-            <span class="body-system-copy"><strong>${escapeHtml(labelForSystem(system))}</strong><span>${detail}</span></span>
-          </button>`;
-        }).join("");
+      byId("body-system-detail-title").textContent = labelForSystem(system.key);
+      const indicators = state.indicatorCatalog.filter(item => item.body_system === system.key);
+      byId("body-system-detail-copy").textContent = state.demoMode
+        ? "Exemplo fictício para demonstração; não representa uma pessoa e não permite interpretação clínica."
+        : indicators.length
+          ? `${system.description} Selecione um indicador para consultar os detalhes disponíveis.`
+          : `${system.description} Não há indicador configurado para este sistema.`;
+      const readings = state.demoMode
+        ? demoReadings.filter(reading => reading.system === system.key)
+        : [];
+      byId("body-system-detail-values").innerHTML = readings.map(reading => `
+        <span class="body-system-detail-value"><strong>${escapeHtml(reading.label)}:</strong> ${escapeHtml(reading.value)}</span>
+      `).join("");
+    }
+
+    function selectBodySystem(systemKey) {
+      if (!bodySystems.some(system => system.key === systemKey)) return;
+      state.selectedBodySystem = systemKey;
+      state.indicatorFilter = systemKey;
+      renderIndicatorFilters();
+      renderIndicatorGroups(state.indicatorCatalog);
+      renderBodySystems(state.missionCoverage);
+    }
+
+    function startDemo() {
+      state.demoMode = true;
+      state.missionToken = "";
+      state.selectedBodySystem = "cardiovascular";
+      state.indicatorFilter = "all";
+      clearMissionDashboardData();
+      byId("mission-results").hidden = true;
+      byId("demo-dashboard").hidden = false;
+      byId("demo-reading-cards").innerHTML = demoReadings.map(reading => `
+        <article class="demo-reading-card">
+          <small>SINTÉTICO</small>
+          <strong>${escapeHtml(reading.value)}</strong>
+          <span>${escapeHtml(reading.label)} · ${escapeHtml(labelForSystem(reading.system))}</span>
+        </article>
+      `).join("");
+      byId("demo-start").hidden = true;
+      byId("demo-exit").hidden = false;
+      byId("demo-status").textContent = "Demonstração ativa. Os dados ficam apenas nesta página.";
+      byId("mission-access").open = false;
+      setConnectionStatus("Demonstração sintética", "waiting");
+      renderIndicatorFilters();
+      renderIndicatorGroups(state.indicatorCatalog);
+      renderBodySystems();
+    }
+
+    function endDemo() {
+      clearMissionSession();
+      byId("demo-status").textContent = "Demonstração terminada; os valores foram removidos da página.";
     }
 
     function renderIndicatorGroups(indicators) {
@@ -1594,8 +1774,8 @@
           usingCache = true;
         } catch (cacheError) {
           byId("indicator-groups").innerHTML = `<p class="dataset-status">Não foi possível carregar o catálogo de indicadores: ${escapeHtml(cacheError.message)}</p>`;
-          byId("mission-body-systems").innerHTML = '<p class="dataset-status">O mapa corporal continua esquemático; o catálogo não está disponível.</p>';
           byId("body-map-status").textContent = `Catálogo indisponível: ${cacheError.message}`;
+          renderBodySystems();
           renderOfflineMetricFields();
           byId("offline-record-status").textContent = `Fila offline indisponível: ${cacheError.message}`;
           return;
@@ -1629,12 +1809,20 @@
       if (navButton) setView(navButton.dataset.view);
       const filterButton = event.target.closest("[data-indicator-filter]");
       const bodySystemButton = event.target.closest("[data-body-system]");
-      if (filterButton || bodySystemButton) {
-        state.indicatorFilter = filterButton?.dataset.indicatorFilter
-          || bodySystemButton.dataset.bodySystem;
+      const bodyHotspot = event.target.closest("[data-body-hotspot]");
+      if (filterButton) {
+        const filter = filterButton.dataset.indicatorFilter;
+        if (filter === "all") {
+          state.indicatorFilter = "all";
+          state.selectedBodySystem = null;
+          renderBodySystems(state.missionCoverage);
+        } else {
+          selectBodySystem(filter);
+        }
         renderIndicatorFilters();
         renderIndicatorGroups(state.indicatorCatalog);
-        renderBodySystems(state.missionCoverage);
+      } else if (bodySystemButton || bodyHotspot) {
+        selectBodySystem(bodySystemButton?.dataset.bodySystem || bodyHotspot.dataset.bodyHotspot);
       }
     });
     byId("mission-dashboard-form").addEventListener("submit", async event => {
@@ -1647,6 +1835,12 @@
         byId("mission-status").textContent = "Indique token, tripulante e período válido (início anterior ou igual ao fim).";
         return;
       }
+      state.demoMode = false;
+      byId("demo-dashboard").hidden = true;
+      byId("demo-reading-cards").innerHTML = "";
+      byId("demo-start").hidden = false;
+      byId("demo-exit").hidden = true;
+      byId("demo-status").textContent = "";
       state.missionToken = token;
       tokenInput.value = "";
       byId("mission-load").disabled = true;
@@ -1701,6 +1895,9 @@
     window.addEventListener("online", updateOfflineConnectionStatus);
     window.addEventListener("offline", updateOfflineConnectionStatus);
     initializeMissionPeriod();
+    renderBodySystems();
+    byId("demo-start").addEventListener("click", startDemo);
+    byId("demo-exit").addEventListener("click", endDemo);
     updateOfflineConnectionStatus();
     renderOfflineQueue().catch(error => {
       byId("offline-queue-summary").textContent = `Fila local indisponível: ${error.message}`;
