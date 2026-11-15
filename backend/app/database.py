@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 import os
 import sqlite3
 from pathlib import Path
@@ -32,6 +33,7 @@ def initialize_database() -> None:
     path = database_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(path) as connection:
+        connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA synchronous = FULL")
         connection.execute(
@@ -373,12 +375,6 @@ def initialize_database() -> None:
             )
             """
         )
-        approval_table_exists = connection.execute(
-            """
-            SELECT 1 FROM sqlite_master
-            WHERE type = 'table' AND name = 'monitoring_alert_rule_approvals'
-            """
-        ).fetchone() is not None
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS monitoring_alert_rule_approvals (
@@ -470,16 +466,53 @@ def initialize_database() -> None:
             ON monitoring_alert_rule_changes (mission_id, changed_at, id)
             """
         )
-        if not approval_table_exists:
-            changed_at = datetime.now(timezone.utc).isoformat()
-            legacy_active_rules = connection.execute(
-                """
-                SELECT mission_id, rule_id, version, rule_json
-                FROM monitoring_alert_rules
-                WHERE active = 1
-                """
-            ).fetchall()
-            for mission_id, rule_id, version, rule_json in legacy_active_rules:
+        changed_at = datetime.now(timezone.utc).isoformat()
+        active_rules = connection.execute(
+            """
+            SELECT rules.mission_id, rules.rule_id, rules.version, rules.rule_json,
+                   approvals.approval_json, approvals.scope_json
+            FROM monitoring_alert_rules AS rules
+            LEFT JOIN monitoring_alert_rule_approvals AS approvals
+                ON approvals.mission_id = rules.mission_id
+                AND approvals.rule_id = rules.rule_id
+                AND approvals.rule_version = rules.version
+            WHERE rules.active = 1
+            """
+        ).fetchall()
+        for row in active_rules:
+            is_operationally_approved = False
+            if row["approval_json"] is not None and row["scope_json"] is not None:
+                try:
+                    approval = json.loads(row["approval_json"])
+                    scope = json.loads(row["scope_json"])
+                    approval_scope = approval.get("scope")
+                    approval_date = datetime.fromisoformat(
+                        approval["approval_date"]
+                    )
+                    is_operationally_approved = (
+                        approval.get("status") == "approved"
+                        and approval.get("approved_rule_version") == row["version"]
+                        and all(
+                            isinstance(approval.get(field), str)
+                            and approval[field].strip()
+                            for field in (
+                                "approval_authority",
+                                "protocol_reference",
+                                "source_reference",
+                                "approval_version",
+                            )
+                        )
+                        and approval_date.tzinfo is not None
+                        and approval_date.utcoffset() is not None
+                        and isinstance(scope, list)
+                        and len(scope) == len(set(scope))
+                        and set(scope) <= {"clinical", "operational"}
+                        and "operational" in scope
+                        and approval_scope == scope
+                    )
+                except (AttributeError, KeyError, TypeError, ValueError):
+                    is_operationally_approved = False
+            if not is_operationally_approved:
                 connection.execute(
                     """
                     UPDATE monitoring_alert_rules
@@ -487,7 +520,12 @@ def initialize_database() -> None:
                         updated_at = ?
                     WHERE mission_id = ? AND rule_id = ? AND version = ? AND active = 1
                     """,
-                    (changed_at, mission_id, rule_id, version),
+                    (
+                        changed_at,
+                        row["mission_id"],
+                        row["rule_id"],
+                        row["version"],
+                    ),
                 )
                 connection.execute(
                     """
@@ -498,7 +536,14 @@ def initialize_database() -> None:
                     ) VALUES (?, ?, ?, 'deactivated', 'system:approval-required',
                               ?, 1, 0, ?, ?)
                     """,
-                    (mission_id, rule_id, version, changed_at, rule_json, rule_json),
+                    (
+                        row["mission_id"],
+                        row["rule_id"],
+                        row["version"],
+                        changed_at,
+                        row["rule_json"],
+                        row["rule_json"],
+                    ),
                 )
         connection.execute(
             """

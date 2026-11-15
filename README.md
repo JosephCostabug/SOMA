@@ -144,7 +144,11 @@ recuperação; restaurações periódicas e medidas de RPO/RTO continuam necess�
   `alerts:configure` e escopo sobre todos os astronautas da missão; suporta
   paginação).
 - `PUT /api/v1/alerts/rules/{rule_id}` — cria ou atualiza uma regra com controlo
-  de versão (mesma autorização).
+  de versão (mesma autorização; inicia a versão inativa e não aprovada).
+- `POST /api/v1/alerts/rules/{rule_id}/approve` — regista aprovação e âmbito
+  (token de utilizador com `alerts:approve` e escopo sobre toda a missão).
+- `POST /api/v1/alerts/rules/{rule_id}/activate` — ativa apenas uma versão com
+  aprovação operacional válida (mesma autorização de configuração).
 - `POST /api/v1/alerts/rules/{rule_id}/deactivate` — desativa uma regra sem
   apagar o histórico (mesma autorização).
 - `GET /api/v1/alerts/rules/audit` — consulta paginada das alterações e estados
@@ -198,30 +202,49 @@ indicador; esses limites técnicos não são limites clínicos.
 
 As regras declaradas no ficheiro de bootstrap local protegido por ACL são
 provisionadas na base SQLite apenas quando ainda não existe uma regra com o
-mesmo identificador para a missão. A API permite gerir a configuração em
-operação, sem reiniciar o serviço. Estas regras aplicam-se à missão inteira:
-para as gerir, o token tem de ser de utilizador, conter `alerts:configure`
-explicitamente delegada pela autoridade de identidade e cobrir todos os
-astronautas provisionados. A permissão não é concedida por omissão.
+mesmo identificador para a missão e começam inativas e sem aprovação. A API
+permite gerir a configuração em operação, sem reiniciar o serviço. Estas regras
+aplicam-se à missão inteira: para as gerir, o token tem de ser de utilizador,
+conter `alerts:configure` explicitamente delegada pela autoridade de identidade
+e cobrir todos os astronautas provisionados. A permissão não é concedida por
+omissão.
 
 `PUT /api/v1/alerts/rules/{rule_id}` exige `expected_version: 0` ao criar uma
 regra e a versão atual ao atualizá-la; a versão seguinte é atribuída pelo
-servidor. Uma versão desatualizada recebe `409 Conflict`. Para desativar, envie
-`{"expected_version": <versão atual>}` a
-`POST /api/v1/alerts/rules/{rule_id}/deactivate`. A desativação é reversível:
-um PUT com a versão corrente reativa a regra e cria uma nova versão.
-`GET /api/v1/alerts/rules/audit` regista ator, instante, ação e snapshots
-anteriores/atuais, incluindo o provisionamento inicial. Os registos de auditoria
-são append-only pela API, mas não são invioláveis nem assinados: um operador
-com acesso direto à SQLite pode alterá-los.
-A missão pode ter até 100 regras ativas; o endpoint de listagem e o de auditoria
-são paginados.
+servidor, e fica inativa e não aprovada. Uma versão desatualizada recebe `409
+Conflict`; qualquer alteração exige nova aprovação para a versão resultante.
+Para desativar, envie `{"expected_version": <versão atual>}` a
+`POST /api/v1/alerts/rules/{rule_id}/deactivate`. Reativar uma regra desativada
+exige aprovação operacional da versão criada pela desativação.
 
-A autorização técnica não substitui aprovação clínica/operacional. A proteção
-local do bootstrap não é uma assinatura criptográfica da autoridade terrestre;
-origem, aprovação e validade operacional da regra continuam a exigir validação
-externa. Cada regra deve referenciar o protocolo ou a fonte aplicável. Sem
-regras configuradas, o sistema não emite alertas.
+O fluxo de aprovação é separado da configuração. Um utilizador com a permissão
+`alerts:approve`, também explicitamente delegada e com escopo sobre toda a
+missão, envia a `POST /api/v1/alerts/rules/{rule_id}/approve` as referências do
+protocolo e da fonte, a versão da aprovação e os âmbitos `clinical` e/ou
+`operational`. A API regista o principal autenticado como autoridade e a data
+do servidor; esses campos não são aceites como declarações do cliente. Cada
+aprovação fica vinculada à versão exata da regra. Somente uma aprovação que
+inclua `operational` permite ativar essa versão com
+`POST /api/v1/alerts/rules/{rule_id}/activate`; uma aprovação apenas clínica não
+habilita o motor de alertas. A listagem apresenta o estado (`unapproved` ou
+`approved`) e os metadados; a auditoria inclui os eventos de aprovação e
+ativação.
+
+Esta infraestrutura regista a decisão e as referências fornecidas, mas não
+verifica a autenticidade ou o conteúdo dos documentos citados nem substitui
+revisão pela autoridade competente. Nenhuma aprovação ou fonte real é
+preconfigurada pelo projeto. Os limiares clínicos mostrados como ilustrativos
+continuam explicitamente ilustrativos e não devem ser usados como critérios
+clínicos ou operacionais sem aprovação competente. Na inicialização, regras
+ativas sem aprovação operacional válida para a versão atual são desativadas e
+auditadas; isso inclui regras legadas. A proteção local do bootstrap não é uma
+assinatura criptográfica da autoridade terrestre.
+
+`GET /api/v1/alerts/rules/audit` regista ator, instante, ação e snapshots
+anteriores/atuais, incluindo provisionamento, aprovação e ativação. Os registos
+de auditoria são append-only pela API, mas não são invioláveis nem assinados: um
+operador com acesso direto à SQLite pode alterá-los. A missão pode ter até 100
+regras ativas; os endpoints de listagem e auditoria são paginados.
 
 Alertas para medições recém-aceites são gravados na mesma transação da medição,
 incluindo durante a sincronização offline; reenvios idempotentes não geram um

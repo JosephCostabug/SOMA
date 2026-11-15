@@ -3077,6 +3077,243 @@ def upsert_monitoring_alert_rule(
 
 
 @app.post(
+    "/api/v1/alerts/rules/{rule_id}/approve",
+    response_model=MonitoringAlertRuleRecord,
+    tags=["alerts"],
+)
+def approve_monitoring_alert_rule(
+    payload: MonitoringAlertApprovalRequest,
+    rule_id: Annotated[str, Path(min_length=1, max_length=100)],
+    connection: Connection,
+    principal: CurrentPrincipal,
+    request: Request,
+) -> MonitoringAlertRuleRecord:
+    mission_id = _require_alert_approval_access(principal, request)
+    approved_at = datetime.now(timezone.utc)
+    approved_at_iso = approved_at.isoformat()
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        existing = connection.execute(
+            """
+            SELECT version, rule_json, active, updated_by, updated_at
+            FROM monitoring_alert_rules
+            WHERE mission_id = ? AND rule_id = ?
+            """,
+            (mission_id, rule_id),
+        ).fetchone()
+        if existing is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Regra de monitorização não encontrada.",
+            )
+        if existing["active"]:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Desative a regra antes de aprovar a sua versão atual.",
+            )
+        previous_approval = connection.execute(
+            """
+            SELECT 1 FROM monitoring_alert_rule_approvals
+            WHERE mission_id = ? AND rule_id = ? AND rule_version = ?
+            """,
+            (mission_id, rule_id, existing["version"]),
+        ).fetchone()
+        if previous_approval is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Esta versão da regra já tem uma aprovação registada.",
+            )
+
+        approval = MonitoringAlertApproval(
+            status="approved",
+            approval_authority=principal.subject,
+            protocol_reference=payload.protocol_reference,
+            source_reference=payload.source_reference,
+            approval_version=payload.approval_version,
+            approval_date=approved_at,
+            approved_rule_version=existing["version"],
+            scope=payload.scope,
+        )
+        current_rule = MonitoringAlertRule.model_validate_json(existing["rule_json"])
+        connection.execute(
+            """
+            INSERT INTO monitoring_alert_rule_approvals (
+                mission_id, rule_id, rule_version, approval_json, scope_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                mission_id,
+                rule_id,
+                existing["version"],
+                approval.model_dump_json(),
+                json.dumps(payload.scope),
+                approved_at_iso,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO monitoring_alert_rule_changes (
+                mission_id, rule_id, version, action, actor_id, changed_at,
+                previous_active, current_active, previous_rule_json, current_rule_json
+            ) VALUES (?, ?, ?, 'approved', ?, ?, 0, 0, ?, ?)
+            """,
+            (
+                mission_id,
+                rule_id,
+                existing["version"],
+                principal.subject,
+                approved_at_iso,
+                existing["rule_json"],
+                existing["rule_json"],
+            ),
+        )
+        connection.commit()
+    except HTTPException:
+        connection.rollback()
+        raise
+    except (sqlite3.Error, ValueError) as error:
+        connection.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Não foi possível registar a aprovação da regra.",
+        ) from error
+    return MonitoringAlertRuleRecord(
+        rule=current_rule,
+        active=False,
+        updated_by=existing["updated_by"],
+        updated_at=datetime.fromisoformat(existing["updated_at"]),
+        approval=approval,
+    )
+
+
+@app.post(
+    "/api/v1/alerts/rules/{rule_id}/activate",
+    response_model=MonitoringAlertRuleRecord,
+    tags=["alerts"],
+)
+def activate_monitoring_alert_rule(
+    rule_id: Annotated[str, Path(min_length=1, max_length=100)],
+    connection: Connection,
+    principal: CurrentPrincipal,
+    request: Request,
+) -> MonitoringAlertRuleRecord:
+    mission_id = _require_alert_configuration_access(principal, request)
+    activated_at = datetime.now(timezone.utc)
+    activated_at_iso = activated_at.isoformat()
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        existing = connection.execute(
+            """
+            SELECT version, rule_json, active, updated_by
+            FROM monitoring_alert_rules
+            WHERE mission_id = ? AND rule_id = ?
+            """,
+            (mission_id, rule_id),
+        ).fetchone()
+        if existing is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Regra de monitorização não encontrada.",
+            )
+        if existing["active"]:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A regra de monitorização já está ativa.",
+            )
+        approval_row = connection.execute(
+            """
+            SELECT approval_json
+            FROM monitoring_alert_rule_approvals
+            WHERE mission_id = ? AND rule_id = ? AND rule_version = ?
+            """,
+            (mission_id, rule_id, existing["version"]),
+        ).fetchone()
+        if approval_row is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A versão atual da regra não tem aprovação.",
+            )
+        approval = MonitoringAlertApproval.model_validate_json(
+            approval_row["approval_json"]
+        )
+        if (
+            approval.status != "approved"
+            or approval.approved_rule_version != existing["version"]
+            or "operational" not in approval.scope
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A regra não tem aprovação operacional válida para esta versão.",
+            )
+        active_count = connection.execute(
+            """
+            SELECT COUNT(*) FROM monitoring_alert_rules
+            WHERE mission_id = ? AND active = 1
+            """,
+            (mission_id,),
+        ).fetchone()[0]
+        if active_count >= MAX_ACTIVE_MONITORING_ALERT_RULES:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A missão já atingiu o máximo de regras ativas.",
+            )
+
+        activation = connection.execute(
+            """
+            UPDATE monitoring_alert_rules
+            SET active = 1, updated_by = ?, updated_at = ?
+            WHERE mission_id = ? AND rule_id = ? AND version = ? AND active = 0
+            """,
+            (
+                principal.subject,
+                activated_at_iso,
+                mission_id,
+                rule_id,
+                existing["version"],
+            ),
+        )
+        if activation.rowcount != 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A regra mudou antes de ser ativada; consulte a configuração atual.",
+            )
+        connection.execute(
+            """
+            INSERT INTO monitoring_alert_rule_changes (
+                mission_id, rule_id, version, action, actor_id, changed_at,
+                previous_active, current_active, previous_rule_json, current_rule_json
+            ) VALUES (?, ?, ?, 'activated', ?, ?, 0, 1, ?, ?)
+            """,
+            (
+                mission_id,
+                rule_id,
+                existing["version"],
+                principal.subject,
+                activated_at_iso,
+                existing["rule_json"],
+                existing["rule_json"],
+            ),
+        )
+        connection.commit()
+    except HTTPException:
+        connection.rollback()
+        raise
+    except (sqlite3.Error, ValueError) as error:
+        connection.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Não foi possível ativar a regra de monitorização.",
+        ) from error
+    return MonitoringAlertRuleRecord(
+        rule=MonitoringAlertRule.model_validate_json(existing["rule_json"]),
+        active=True,
+        updated_by=principal.subject,
+        updated_at=activated_at,
+        approval=approval,
+    )
+
+
+@app.post(
     "/api/v1/alerts/rules/{rule_id}/deactivate",
     response_model=MonitoringAlertRuleRecord,
     tags=["alerts"],
@@ -3189,9 +3426,15 @@ def get_monitoring_alert_rule_audit(
         ).fetchone()[0]
         rows = connection.execute(
             """
-            SELECT * FROM monitoring_alert_rule_changes
-            WHERE mission_id = ?
-            ORDER BY changed_at DESC, id DESC
+            SELECT changes.*, approvals.approval_json
+            FROM monitoring_alert_rule_changes AS changes
+            LEFT JOIN monitoring_alert_rule_approvals AS approvals
+                ON approvals.mission_id = changes.mission_id
+                AND approvals.rule_id = changes.rule_id
+                AND approvals.rule_version = changes.version
+                AND changes.action IN ('approved', 'activated')
+            WHERE changes.mission_id = ?
+            ORDER BY changes.changed_at DESC, changes.id DESC
             LIMIT ? OFFSET ?
             """,
             (mission_id, limit, offset),
@@ -3227,6 +3470,13 @@ def get_monitoring_alert_rule_audit(
                     ),
                     current_rule=MonitoringAlertRule.model_validate_json(
                         row["current_rule_json"]
+                    ),
+                    approval=(
+                        MonitoringAlertApproval.model_validate_json(
+                            row["approval_json"]
+                        )
+                        if row["approval_json"] is not None
+                        else None
                     ),
                 )
                 for row in rows

@@ -254,8 +254,34 @@ class MonitoringAlertApproval(BaseModel):
     source_reference: str | None = None
     approval_version: str | None = None
     approval_date: datetime | None = None
-    approved_rule_version: int | None = None
+    approved_rule_version: int | None = Field(default=None, ge=1)
     scope: list[AlertApprovalScope] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_approval_state(self) -> Self:
+        if self.status == "approved":
+            required_values = (
+                self.approval_authority,
+                self.protocol_reference,
+                self.source_reference,
+                self.approval_version,
+            )
+            if (
+                any(value is None or not value.strip() for value in required_values)
+                or self.approval_date is None
+                or self.approved_rule_version is None
+                or not self.scope
+                or len(self.scope) != len(set(self.scope))
+            ):
+                raise ValueError(
+                    "Uma aprovação tem de conter todos os metadados obrigatórios."
+                )
+            if (
+                self.approval_date.tzinfo is None
+                or self.approval_date.utcoffset() is None
+            ):
+                raise ValueError("A data de aprovação tem de incluir fuso horário.")
+        return self
 
 
 class MonitoringAlertRuleRecord(BaseModel):

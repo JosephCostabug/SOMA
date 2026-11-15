@@ -2064,6 +2064,79 @@ def test_alert_rule_update_rolls_back_if_audit_record_cannot_be_written():
     assert audit_count == 0
 
 
+def test_alert_rule_approval_rolls_back_if_audit_record_cannot_be_written():
+    _create_bootstrap_file(
+        Path(os.environ["MISSION_BOOTSTRAP_PATH"]),
+        enable_alert_configuration=True,
+        enable_alert_approval=True,
+    )
+    configuration_headers = _authorization_headers(
+        astronaut_ids=["astronaut-01", "astronaut-02"],
+        permissions=["alerts:configure"],
+    )
+    approval_headers = _authorization_headers(
+        astronaut_ids=["astronaut-01", "astronaut-02"],
+        permissions=["alerts:approve"],
+    )
+
+    with TestClient(app) as client:
+        created = client.put(
+            "/api/v1/alerts/rules/approval-rollback-test",
+            json={
+                "expected_version": 0,
+                "metric": "heart_rate",
+                "minimum_value": 55,
+                "rationale": "Test-only illustrative threshold.",
+                "source_reference": "TEST placeholder.",
+            },
+            headers=configuration_headers,
+        )
+        connection = connect_database()
+        try:
+            connection.execute(
+                """
+                CREATE TRIGGER reject_alert_rule_approval_audit
+                BEFORE INSERT ON monitoring_alert_rule_changes
+                WHEN NEW.action = 'approved'
+                BEGIN
+                    SELECT RAISE(ABORT, 'approval audit unavailable');
+                END
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        response = client.post(
+            "/api/v1/alerts/rules/approval-rollback-test/approve",
+            json={
+                "protocol_reference": "TEST protocol placeholder.",
+                "source_reference": "TEST source placeholder.",
+                "approval_version": "test-version",
+                "scope": ["operational"],
+            },
+            headers=approval_headers,
+        )
+        connection = connect_database()
+        try:
+            approval_count = connection.execute(
+                "SELECT COUNT(*) FROM monitoring_alert_rule_approvals"
+            ).fetchone()[0]
+            audit_count = connection.execute(
+                """
+                SELECT COUNT(*) FROM monitoring_alert_rule_changes
+                WHERE action = 'approved'
+                """
+            ).fetchone()[0]
+        finally:
+            connection.close()
+
+    assert created.status_code == 200
+    assert response.status_code == 500
+    assert approval_count == 0
+    assert audit_count == 0
+
+
 def test_monitoring_alert_rules_require_valid_configured_limits():
     with pytest.raises(ValueError):
         MonitoringAlertRule(
@@ -2353,6 +2426,71 @@ def test_database_initialization_migrates_existing_readings(tmp_path, monkeypatc
     assert {"sync_batches", "sync_batch_items"} <= batch_tables
     assert {"earth_outbound_batches", "earth_outbound_batch_items"} <= batch_tables
     assert outbox_count == 0
+
+
+def test_database_initialization_deactivates_legacy_unapproved_alert_rules(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "legacy-alert-rules.sqlite3"
+    monkeypatch.setenv("HEALTH_DB_PATH", str(database))
+    legacy_rule = MonitoringAlertRule(
+        rule_id="legacy-heart-rate",
+        version=1,
+        metric=Metric.HEART_RATE,
+        minimum_value=55,
+        rationale="Test-only illustrative threshold.",
+        source_reference="TEST placeholder.",
+    )
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE monitoring_alert_rules (
+                mission_id TEXT NOT NULL,
+                rule_id TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                rule_json TEXT NOT NULL,
+                active INTEGER NOT NULL,
+                updated_by TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (mission_id, rule_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO monitoring_alert_rules (
+                mission_id, rule_id, version, rule_json, active, updated_by, updated_at
+            ) VALUES (?, ?, ?, ?, 1, 'legacy', '2026-01-01T00:00:00+00:00')
+            """,
+            (
+                _MISSION_ID,
+                legacy_rule.rule_id,
+                legacy_rule.version,
+                legacy_rule.model_dump_json(),
+            ),
+        )
+
+    initialize_database()
+
+    with sqlite3.connect(database) as connection:
+        rule = connection.execute(
+            """
+            SELECT active, updated_by FROM monitoring_alert_rules
+            WHERE mission_id = ? AND rule_id = ?
+            """,
+            (_MISSION_ID, legacy_rule.rule_id),
+        ).fetchone()
+        audit = connection.execute(
+            """
+            SELECT action, actor_id, previous_active, current_active
+            FROM monitoring_alert_rule_changes
+            WHERE mission_id = ? AND rule_id = ?
+            """,
+            (_MISSION_ID, legacy_rule.rule_id),
+        ).fetchone()
+
+    assert rule == (0, "system:approval-required")
+    assert audit == ("deactivated", "system:approval-required", 1, 0)
 
 
 def _earth_sync_batch(*, eligible=True):
