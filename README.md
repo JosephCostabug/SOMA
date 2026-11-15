@@ -41,27 +41,35 @@ estado de sincronização e apoio local, não uma decisão clínica.
 
 ## Painel web
 
-A secção “Explorar dados” é de consulta pública e não apresenta telas de login ou cadastro.
-Mostra dados agregados obtidos diretamente do NASA OSDR no pedido:
-OSD-575 (Inspiration4), painel metabólico sérico. Inclui glicose, albumina,
-creatinina e ALT nas unidades da fonte, agrupadas pelos pontos de recolha do
-ficheiro. A aplicação não guarda o CSV nem converte estes resultados em
-medições de astronautas, sinais vitais, alertas ou limites clínicos.
+O ecrã inicial é o painel da missão: apresenta a figura humana esquemática,
+sistemas corporais, formulário de acesso, medições observadas, tendência
+descritiva e alertas. O mapa corporal é apenas uma forma de navegar pelo
+catálogo; não representa anatomia clínica nem localiza medições no corpo. A
+interface não apresenta fontes ou créditos dos conjuntos de dados nem páginas
+de documentação; estes detalhes e a proveniência científica ficam neste README.
+Alertas podem manter referências de protocolos aprovados para garantir
+rastreabilidade operacional.
 
-O acesso público é limitado ao endpoint de leitura do conjunto NASA indicado
-abaixo. Os restantes endpoints de leituras, alertas, importação científica e
-sincronização continuam a exigir autenticação e permissões. A licença
-específica do ficheiro OSD-575 não está confirmada; consulte a citação,
-versão e termos na página oficial antes de reutilizar ou redistribuir dados.
+O endpoint público de dados científicos NASA continua disponível pela API,
+mas não é carregado no ecrã inicial. O conjunto OSD-575 (Inspiration4) contém
+resultados séricos agregados e não deve ser confundido com medições em tempo
+real ou dados operacionais dos tripulantes. A aplicação não guarda o CSV nem
+converte estes resultados em medições de astronautas, sinais vitais, alertas ou
+limites clínicos. A licença específica do ficheiro não está confirmada;
+consulte a citação, versão e termos oficiais antes de reutilizar ou redistribuir.
+Crédito de origem: “Data are courtesy of the NASA Open Science Data Repository
+(OSDR).” Consulte o [estudo OSD-575](https://osdr.nasa.gov/bio/repo/data/studies/OSD-575)
+e as [orientações de citação do OSDR](https://science.nasa.gov/reference/osdr-faq/)
+para a citação versionada e os termos aplicáveis.
 
 O deploy de demonstração no Vercel usa o entrypoint Python em `main.py`.
 Como o SQLite em `/tmp` não é persistente e o ambiente publicado não tem
-bootstrap de missão, este deploy serve a experiência pública NASA e as rotas
-públicas; não use para guardar nem consultar dados reais de saúde.
+bootstrap de missão, este deploy serve apenas as rotas públicas; não use para
+guardar nem consultar dados reais de saúde.
 
-O separador “Painel da missão” requer um token de utilizador emitido pela
-autoridade de identidade configurada, com escopos para o astronauta e permissão
-`readings:read`. A confirmação de alertas também requer `alerts:acknowledge`.
+O painel requer um token de utilizador emitido pela autoridade de identidade
+configurada, com escopos para o astronauta e permissão `readings:read`. A
+confirmação de alertas também requer `alerts:acknowledge`.
 O token é mantido apenas em memória durante o acesso, pode ser removido pelo
 botão “Terminar acesso” e não é guardado em armazenamento do navegador. O painel
 exibe medições recentes, contagens observadas e alertas já persistidos; não

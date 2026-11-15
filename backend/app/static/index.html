@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#101b2c">
-  <title>SOMA — Dados de saúde espacial</title>
+  <title>SOMA — Monitorização da tripulação</title>
   <style>
     :root {
       color-scheme: light;
@@ -20,6 +20,8 @@
       --header-text: #f3f6ff;
       --success: #157347;
       --danger: #a52c35;
+      --body-fill: #dce5f2;
+      --body-stroke: #8fa1ba;
       --shadow: 0 14px 40px rgba(25, 45, 80, .08);
       font-family: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
       font-synthesis: none;
@@ -41,6 +43,8 @@
         --header-text: #edf2fb;
         --success: #69d6a0;
         --danger: #ff9a9f;
+        --body-fill: #243752;
+        --body-stroke: #9bb2d1;
         --shadow: 0 14px 40px rgba(0, 0, 0, .18);
       }
     }
@@ -193,17 +197,6 @@
       background: var(--surface);
       box-shadow: var(--shadow);
     }
-    .source-card {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 18px;
-      align-items: center;
-      margin-bottom: 18px;
-      border-top: 3px solid var(--accent);
-    }
-    .source-card p { margin: 0; color: var(--muted); }
-    .source-links { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 12px; font-size: 14px; font-weight: 650; }
-    .source-id { color: var(--muted); font-size: 13px; font-weight: 700; }
     .toolbar {
       display: flex;
       align-items: flex-end;
@@ -235,6 +228,99 @@
     .mission-form .field { min-width: 0; }
     .mission-form input { width: 100%; }
     .mission-results { display: grid; gap: 16px; margin-top: 18px; }
+    .mission-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr);
+      align-items: start;
+      gap: 18px;
+    }
+    .body-map-panel { min-width: 0; }
+    .body-map-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .body-map-heading p { max-width: 54ch; margin: 0; color: var(--muted); font-size: 14px; }
+    .body-map-layout {
+      display: grid;
+      grid-template-columns: minmax(190px, .85fr) minmax(0, 1fr);
+      align-items: center;
+      gap: 14px;
+      margin-top: 16px;
+    }
+    .human-figure {
+      display: grid;
+      min-height: 340px;
+      place-items: center;
+      overflow: hidden;
+      margin: 0;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: radial-gradient(ellipse at center, var(--surface-soft), var(--surface));
+    }
+    .human-figure svg { display: block; width: min(100%, 300px); max-height: 400px; }
+    .body-silhouette { fill: var(--body-fill); stroke: var(--body-stroke); stroke-width: 2; }
+    .body-joint { fill: none; stroke: var(--body-stroke); stroke-width: 17; stroke-linecap: round; }
+    .body-marker { fill: var(--header); stroke: var(--surface); stroke-width: 3; }
+    .body-marker-label { fill: #fff; font: 800 10px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; }
+    .body-system-list { display: grid; gap: 8px; }
+    .body-system-button {
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr);
+      min-height: 54px;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      padding: 7px 10px;
+      background: var(--surface);
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+    }
+    .body-system-button:hover, .body-system-button[aria-pressed="true"] {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .body-system-code {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .body-system-copy { min-width: 0; }
+    .body-system-copy strong, .body-system-copy span { display: block; }
+    .body-system-copy strong { font-size: 14px; }
+    .body-system-copy span { color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .body-map-status { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
+    .mission-query-card .mission-form { grid-template-columns: 1fr 1fr; }
+    .mission-query-card .field:first-child { grid-column: 1 / -1; }
+    .mission-query-card input { min-width: 0; }
+    .mission-query-card .controls { grid-column: 1 / -1; flex-wrap: wrap; }
+    .mission-query-card .controls .button { flex: 1; }
+    .mission-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .mission-summary-card {
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      background: var(--surface-soft);
+    }
+    .mission-summary-card small { display: block; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+    .mission-summary-card strong { display: block; margin-top: 5px; font-size: clamp(20px, 2.4vw, 28px); line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .mission-summary-card span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .mission-indicator-group { margin-top: 18px; }
+    .mission-indicator-group h3 { margin-bottom: 10px; }
+    .mission-indicator-group .mission-indicators { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+    .mission-indicator { min-width: 0; }
+    .mission-indicator span { display: block; }
+    .mission-trend-chart { margin-top: 12px; }
+    .mission-trend-chart svg { display: block; width: 100%; height: auto; }
+    .mission-trend-line { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .mission-trend-point { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+    .mission-trend-label { fill: var(--muted); font: 12px system-ui, sans-serif; }
+    .mission-trend-table { margin-top: 12px; }
     .mission-alert-list { display: grid; gap: 12px; }
     .mission-alert {
       border: 1px solid var(--border);
@@ -463,21 +549,7 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     .dataset-status { color: var(--muted); font-size: 13px; }
-    .chart-card { margin-bottom: 18px; }
-    .chart-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-    .chart-top p { margin: 0; color: var(--muted); font-size: 14px; }
-    .legend { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 12px; }
-    .legend span { display: inline-flex; align-items: center; gap: 6px; }
-    .legend i { display: inline-block; width: 18px; height: 3px; border-radius: 9px; background: var(--accent); }
-    .legend i.range { height: 10px; border: 1px solid var(--accent); background: var(--accent-soft); }
-    .chart-wrap { margin-top: 18px; }
-    .chart-wrap svg { display: block; width: 100%; height: auto; overflow: visible; }
     .chart-grid { stroke: var(--border); stroke-width: 1; }
-    .chart-axis { fill: var(--muted); font: 12px system-ui, sans-serif; }
-    .chart-line { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
-    .chart-range { stroke: var(--accent); stroke-width: 2; opacity: .7; }
-    .chart-cap { stroke: var(--accent); stroke-width: 2; opacity: .7; }
-    .chart-point { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
     .chart-empty { display: grid; min-height: 220px; place-items: center; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted); text-align: center; }
     .table-wrap { overflow-x: auto; margin-top: 18px; border: 1px solid var(--border); border-radius: 12px; }
     table { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; }
@@ -496,11 +568,6 @@
       font-size: 13px;
     }
     .method-note p:last-child { margin-bottom: 0; }
-    .about-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-    .about-grid .card { box-shadow: none; }
-    .about-grid p:last-child, .about-grid ul:last-child { margin-bottom: 0; }
-    .provenance { margin-top: 16px; }
-    .provenance code { overflow-wrap: anywhere; color: var(--muted); font-size: 12px; }
     footer { max-width: 1280px; margin: 0 auto; padding: 0 28px 30px; color: var(--muted); font-size: 12px; }
     footer p { margin: 5px 0; }
 
@@ -509,8 +576,9 @@
       .main-nav { padding: 0 16px; }
       main { padding: 24px 16px 36px; }
       .page-heading { align-items: flex-start; }
-      .source-card { grid-template-columns: 1fr; }
-      .about-grid { grid-template-columns: 1fr; }
+      .mission-hero { grid-template-columns: 1fr; }
+      .body-map-layout { grid-template-columns: minmax(150px, .7fr) minmax(0, 1fr); }
+      .mission-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       footer { padding: 0 16px 24px; }
     }
     @media (max-width: 520px) {
@@ -525,10 +593,15 @@
       .page-heading .tag { display: inline-flex; margin-top: 12px; }
       h1 { font-size: 30px; }
       .card { border-radius: 15px; padding: 16px; }
-      .toolbar, .chart-top { align-items: stretch; flex-direction: column; }
+      .toolbar { align-items: stretch; flex-direction: column; }
       .controls { align-items: stretch; flex-direction: column; }
       select, input, .controls .button { width: 100%; }
-      .legend { gap: 8px; }
+      .mission-query-card .mission-form { grid-template-columns: 1fr; }
+      .mission-query-card .field:first-child, .mission-query-card .controls { grid-column: auto; }
+      .mission-query-card .controls .button { width: 100%; }
+      .body-map-layout { grid-template-columns: minmax(105px, .55fr) minmax(0, 1fr); gap: 8px; }
+      .human-figure { min-height: 300px; }
+      .human-figure svg { max-height: 320px; }
       th, td { padding: 10px; }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -543,154 +616,121 @@
     <div class="header-inner">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">S</span>
-        <span class="brand-copy"><span class="brand-name">SOMA</span><span class="brand-subtitle">Dados de saúde espacial</span></span>
+        <span class="brand-copy"><span class="brand-name">SOMA</span><span class="brand-subtitle">Monitorização da tripulação</span></span>
       </div>
-      <div class="header-meta"><span class="live-dot" aria-hidden="true"></span><span id="connection-status" role="status" aria-live="polite">A aguardar NASA OSDR</span></div>
+      <div class="header-meta"><span class="live-dot" aria-hidden="true"></span><span id="connection-status" role="status" aria-live="polite">A aguardar autenticação</span></div>
     </div>
     <nav class="main-nav" aria-label="Navegação principal">
-      <button type="button" data-view="data" aria-current="page">Explorar dados</button>
-      <button type="button" data-view="mission">Painel da missão</button>
+      <button type="button" data-view="mission" aria-current="page">Monitorização</button>
       <button type="button" data-view="offline">Registo offline</button>
-      <button type="button" data-view="about">Fonte e método</button>
     </nav>
   </header>
 
   <main id="main">
-    <section id="view-data" aria-labelledby="page-title">
+    <section id="view-mission" aria-labelledby="mission-title">
       <div class="page-heading">
         <div>
-          <p class="eyebrow">NASA Open Science Data Repository · OSD-575</p>
-          <h1 id="page-title">Um painel metabólico da missão Inspiration4</h1>
-          <p class="lede">Explore valores séricos recolhidos antes e depois do voo. Os pontos são resumos descritivos de dados publicados pela NASA, não sinais vitais em tempo real.</p>
-        </div>
-        <span class="tag">Investigação histórica · não clínico</span>
-      </div>
-
-      <div id="loading" class="notice loading" role="status">
-        <span class="spinner" aria-hidden="true"></span><span>A obter os dados públicos do NASA OSDR…</span>
-      </div>
-      <div id="load-error" class="notice error" role="alert" hidden>
-        <p id="error-message">Não foi possível obter o conjunto de dados.</p>
-        <button id="retry" class="button secondary" type="button">Tentar novamente</button>
-      </div>
-
-      <div id="dataset-content" hidden>
-        <section class="card source-card" aria-labelledby="dataset-title">
-          <div>
-            <p class="eyebrow">Conjunto de dados</p>
-            <h2 id="dataset-title"></h2>
-            <p id="dataset-summary"></p>
-            <div class="source-links">
-              <a id="study-link" href="https://osdr.nasa.gov/bio/repo/data/studies/OSD-575" target="_blank" rel="noopener noreferrer">Página oficial do estudo</a>
-              <a id="file-link" href="https://osdr.nasa.gov/" target="_blank" rel="noopener noreferrer">Ficheiro original no NASA OSDR</a>
-              <a href="https://science.nasa.gov/reference/osdr-faq/" target="_blank" rel="noopener noreferrer">Como citar e creditar OSDR</a>
-            </div>
-          </div>
-          <span id="source-id" class="source-id"></span>
-        </section>
-
-        <section class="card chart-card" aria-labelledby="chart-title">
-          <div class="toolbar">
-            <div class="toolbar-copy">
-              <h2 id="chart-title">Valores por ponto de recolha</h2>
-              <p id="retrieval-status" class="dataset-status"></p>
-            </div>
-            <div class="controls">
-              <div class="field">
-                <label for="metric-select">Marcador do painel metabólico</label>
-                <select id="metric-select"></select>
-              </div>
-              <button id="refresh" class="button secondary" type="button">Atualizar dados</button>
-            </div>
-          </div>
-          <div class="chart-top">
-            <p id="metric-description"></p>
-            <div class="legend" aria-label="Legenda do gráfico">
-              <span><i aria-hidden="true"></i>Média</span>
-              <span><i class="range" aria-hidden="true"></i>Intervalo observado</span>
-            </div>
-          </div>
-          <div id="chart" class="chart-wrap"></div>
-          <div class="table-wrap">
-            <table>
-              <caption class="skip-link">Resumo agregado dos valores do NASA OSDR por ponto de recolha</caption>
-              <thead><tr><th scope="col">Ponto de recolha</th><th scope="col">Média</th><th scope="col">Intervalo observado</th><th scope="col">Valores usados</th><th scope="col">Em falta</th></tr></thead>
-              <tbody id="metric-rows"></tbody>
-            </table>
-          </div>
-          <div class="method-note">
-            <p><strong>Como ler:</strong> cada ponto resume os valores numéricos disponíveis para a fase indicada. A faixa mostra mínimo e máximo observados; “em falta” conta campos vazios, `NA` ou `N/A`. Não são aplicados limites clínicos nem conversões de unidade.</p>
-          </div>
-        </section>
-
-        <section class="card indicator-overview" aria-labelledby="indicator-overview-title">
-          <div class="toolbar">
-            <div class="toolbar-copy">
-              <h2 id="indicator-overview-title">Indicadores em monitorização</h2>
-              <p>Os indicadores são agrupados por sistema corporal e cada um informa se a tendência é suportada.</p>
-            </div>
-          </div>
-          <div id="clinical-warning" class="notice" role="note">Limiares clínicos neste painel são ilustrativos e não substituem avaliação profissional; a fonte não está validada neste deployment.</div>
-          <div id="indicator-summary" class="indicator-summary" aria-live="polite"></div>
-          <div id="indicator-filters" class="indicator-filters" aria-label="Filtrar indicadores por sistema corporal"></div>
-          <div id="indicator-groups" class="indicator-grid" role="list"></div>
-        </section>
-
-        <section class="card mission-overview" aria-labelledby="mission-overview-title">
-          <div class="toolbar">
-            <div class="toolbar-copy">
-              <h2 id="mission-overview-title">Operação e apoio ao solo</h2>
-              <p>O painel prioriza tendência, contexto por sistema corporal e continuidade de missão em ligações instáveis.</p>
-            </div>
-          </div>
-          <div id="mission-overview-grid" class="mission-grid" aria-live="polite"></div>
-        </section>
-
-        <p id="source-license-note" class="dataset-status"></p>
-      </div>
-    </section>
-
-    <section id="view-mission" aria-labelledby="mission-title" hidden>
-      <div class="page-heading">
-        <div>
-          <p class="eyebrow">Acesso autenticado · dados operacionais</p>
-          <h1 id="mission-title">Monitorização por tripulante</h1>
-          <p class="lede">Consulte medições, cobertura observada e alertas para um astronauta. A autorização é verificada pela API para cada pedido.</p>
+          <p class="eyebrow">Painel operacional · missão</p>
+          <h1 id="mission-title">Estado da tripulação</h1>
+          <p class="lede">Sistemas corporais, medições observadas, tendências descritivas e alertas com acesso autorizado.</p>
         </div>
         <span class="tag">Apoio à monitorização · não diagnóstico</span>
       </div>
-      <section class="card" aria-labelledby="mission-query-title">
-        <h2 id="mission-query-title">Selecionar período e tripulante</h2>
-        <p>Use uma credencial de utilizador já emitida pela autoridade de identidade da missão. A credencial fica apenas na memória desta página e não é guardada no navegador.</p>
-        <form id="mission-dashboard-form" class="mission-form">
-          <div class="field">
-            <label for="mission-token">Token de acesso</label>
-            <input id="mission-token" name="token" type="password" autocomplete="off" required>
+      <div class="mission-hero">
+        <section class="card body-map-panel" aria-labelledby="body-map-title">
+          <div class="body-map-heading">
+            <div>
+              <h2 id="body-map-title">Mapa dos sistemas corporais</h2>
+              <p>Esquema de navegação do catálogo — não é imagem clínica nem representa medições anatómicas.</p>
+            </div>
+            <span class="tag">Vista geral</span>
           </div>
-          <div class="field">
-            <label for="mission-astronaut">Identificador do tripulante</label>
-            <input id="mission-astronaut" name="astronaut" type="text" maxlength="100" autocomplete="off" required>
+          <div class="body-map-layout">
+            <figure class="human-figure">
+              <svg viewBox="0 0 300 500" role="img" aria-labelledby="human-map-svg-title human-map-svg-desc">
+                <title id="human-map-svg-title">Figura humana esquemática</title>
+                <desc id="human-map-svg-desc">Marcadores do catálogo para cardiovascular, respiratório, metabólico, termorregulação, recuperação e bem-estar.</desc>
+                <circle class="body-silhouette" cx="150" cy="48" r="24"></circle>
+                <path class="body-joint" d="M150 76 L150 95"></path>
+                <path class="body-silhouette" d="M127 91 Q150 81 173 91 L187 107 L178 224 Q150 239 122 224 L113 107 Z"></path>
+                <path class="body-joint" d="M121 105 L91 123 L69 179"></path>
+                <path class="body-joint" d="M179 105 L209 123 L231 179"></path>
+                <path class="body-joint" d="M137 226 L126 318 L116 424"></path>
+                <path class="body-joint" d="M163 226 L174 318 L184 424"></path>
+                <path class="body-joint" d="M109 426 L122 426"></path>
+                <path class="body-joint" d="M178 426 L191 426"></path>
+                <circle class="body-marker" cx="150" cy="61" r="15"></circle>
+                <text class="body-marker-label" x="150" y="61">BE</text>
+                <circle class="body-marker" cx="150" cy="142" r="15"></circle>
+                <text class="body-marker-label" x="150" y="142">RP</text>
+                <circle class="body-marker" cx="171" cy="161" r="15"></circle>
+                <text class="body-marker-label" x="171" y="161">CV</text>
+                <circle class="body-marker" cx="150" cy="191" r="15"></circle>
+                <text class="body-marker-label" x="150" y="191">TR</text>
+                <circle class="body-marker" cx="150" cy="257" r="15"></circle>
+                <text class="body-marker-label" x="150" y="257">MT</text>
+                <circle class="body-marker" cx="150" cy="347" r="15"></circle>
+                <text class="body-marker-label" x="150" y="347">RC</text>
+              </svg>
+            </figure>
+            <div id="mission-body-systems" class="body-system-list" aria-label="Sistemas corporais e cobertura">
+              <p class="dataset-status">A carregar o catálogo de indicadores…</p>
+            </div>
           </div>
-          <div class="field">
-            <label for="mission-start">Início do período</label>
-            <input id="mission-start" name="start" type="datetime-local" required>
-          </div>
-          <div class="field">
-            <label for="mission-end">Fim do período</label>
-            <input id="mission-end" name="end" type="datetime-local" required>
-          </div>
-          <div class="controls">
-            <button id="mission-load" class="button" type="submit">Carregar resumo</button>
-            <button id="mission-clear" class="button secondary" type="button">Terminar acesso</button>
-          </div>
-        </form>
-        <p id="mission-status" class="mission-state" role="status" aria-live="polite"></p>
-      </section>
+          <p id="body-map-status" class="body-map-status" role="status" aria-live="polite">Carregue um resumo autorizado para ver a cobertura observada.</p>
+        </section>
+        <section class="card mission-query-card" aria-labelledby="mission-query-title">
+          <p class="eyebrow">Acesso protegido</p>
+          <h2 id="mission-query-title">Abrir painel do tripulante</h2>
+          <p>O token é usado apenas nesta sessão e não é guardado no navegador.</p>
+          <form id="mission-dashboard-form" class="mission-form">
+            <div class="field">
+              <label for="mission-token">Token de acesso</label>
+              <input id="mission-token" name="token" type="password" autocomplete="off" required>
+            </div>
+            <div class="field">
+              <label for="mission-astronaut">ID do tripulante</label>
+              <input id="mission-astronaut" name="astronaut" type="text" maxlength="100" autocomplete="off" required>
+            </div>
+            <div class="field">
+              <label for="mission-start">Início</label>
+              <input id="mission-start" name="start" type="datetime-local" required>
+            </div>
+            <div class="field">
+              <label for="mission-end">Fim</label>
+              <input id="mission-end" name="end" type="datetime-local" required>
+            </div>
+            <div class="controls">
+              <button id="mission-load" class="button" type="submit">Carregar painel</button>
+              <button id="mission-clear" class="button secondary" type="button">Terminar acesso</button>
+            </div>
+          </form>
+          <p id="mission-status" class="mission-state" role="status" aria-live="polite"></p>
+        </section>
+      </div>
       <div id="mission-results" class="mission-results" hidden>
+        <section class="mission-summary" aria-label="Resumo do período">
+          <article class="mission-summary-card"><small>Medições</small><strong id="summary-readings">—</strong><span>registos observados</span></article>
+          <article class="mission-summary-card"><small>Sistemas</small><strong id="summary-systems">—</strong><span>com dados no período</span></article>
+          <article class="mission-summary-card"><small>Alertas</small><strong id="summary-alerts">—</strong><span>eventos registados</span></article>
+          <article class="mission-summary-card"><small>Tripulante</small><strong id="summary-astronaut">—</strong><span>identidade consultada</span></article>
+        </section>
         <section class="card" aria-labelledby="mission-reading-title">
           <h2 id="mission-reading-title">Medições recentes</h2>
           <p id="mission-reading-summary" class="dataset-status"></p>
           <div id="mission-indicators" class="mission-indicators"></div>
+        </section>
+        <section class="card indicator-overview" aria-labelledby="indicator-overview-title">
+          <div class="toolbar">
+            <div class="toolbar-copy">
+              <h2 id="indicator-overview-title">Indicadores por sistema</h2>
+              <p>Valores observados e foco de monitorização. A faixa técnica serve apenas para validação de entrada.</p>
+            </div>
+          </div>
+          <div id="clinical-warning" class="notice" role="note">Limiares clínicos ilustrativos não são diagnóstico, normalidade nem critério de aptidão.</div>
+          <div id="indicator-summary" class="indicator-summary" aria-live="polite"></div>
+          <div id="indicator-filters" class="indicator-filters" aria-label="Filtrar indicadores por sistema corporal"></div>
+          <div id="indicator-groups" class="indicator-grid" role="list"></div>
         </section>
         <section class="card" aria-labelledby="mission-trend-title">
           <h2 id="mission-trend-title">Tendência descritiva</h2>
@@ -712,6 +752,7 @@
             </div>
             <button id="mission-trend-load" class="button secondary" type="submit">Calcular resumo</button>
           </form>
+          <div id="mission-trend-chart" class="mission-trend-chart" aria-live="polite"></div>
           <p id="mission-trend-result" class="mission-state" role="status" aria-live="polite"></p>
         </section>
         <section class="card" aria-labelledby="mission-alert-title" data-interpretation="monitoring_support_not_diagnosis">
@@ -781,60 +822,22 @@
       </section>
     </section>
 
-    <section id="view-about" aria-labelledby="about-title" hidden>
-      <div class="page-heading">
-        <div>
-          <p class="eyebrow">Proveniência e limitações</p>
-          <h1 id="about-title">O que estes dados mostram — e o que não mostram</h1>
-          <p class="lede">O painel usa um ficheiro específico do catálogo NASA OSDR. Mantém a distinção entre investigação histórica e monitorização de saúde operacional.</p>
-        </div>
-      </div>
-      <div class="about-grid">
-        <article class="card">
-          <h2>Fonte NASA</h2>
-          <p><strong>NASA OSDR, OSD-575</strong> — estudo de soro da missão SpaceX Inspiration4, com painel metabólico abrangente e ensaios imunes/cardiovasculares.</p>
-          <p>Este ecrã lê o CSV transformado do painel metabólico e agrega quatro colunas publicadas: glicose, albumina, creatinina e ALT. Os valores do ficheiro permanecem em unidades de origem.</p>
-          <p><a href="https://osdr.nasa.gov/bio/repo/data/studies/OSD-575" target="_blank" rel="noopener noreferrer">Consultar estudo e citação/versionamento oficiais</a></p>
-        </article>
-        <article class="card">
-          <h2>Agregação e privacidade</h2>
-          <p>A aplicação não expõe os identificadores de amostra. Agrupa os registos pelos rótulos temporais do ficheiro e devolve média, mínimo, máximo e contagens de valores presentes/em falta.</p>
-          <p>O CSV é obtido do OSDR no pedido e resumido em memória; não é gravado na base de dados do SOMA nem convertido em medições de astronautas.</p>
-        </article>
-        <article class="card">
-          <h2>Limitações científicas</h2>
-          <ul>
-            <li>São amostras séricas de uma missão curta, não monitorização contínua ou em tempo real.</li>
-            <li>OSD-575 não fornece uma série de frequência cardíaca, pressão arterial ou sono.</li>
-            <li>As médias agregadas não substituem a leitura dos dados individuais, protocolos e metadados do ensaio.</li>
-            <li>Não se inferem diagnósticos, normalidade clínica ou recomendações médicas.</li>
-            <li>A disponibilidade pública indicada pela NASA não confirma, por si só, a licença específica de redistribuição do ficheiro.</li>
-          </ul>
-        </article>
-        <article class="card">
-          <h2>Citação e crédito</h2>
-          <p>Use a citação com versão indicada pelo botão de citação da página oficial OSDR antes de reutilizar ou publicar resultados. O estado da licença específica deste ficheiro permanece por verificar.</p>
-          <p><em>Data are courtesy of the NASA Open Science Data Repository (<a href="https://osdr.nasa.gov/bio/repo" target="_blank" rel="noopener noreferrer">OSDR</a>).</em></p>
-          <p><a href="https://science.nasa.gov/reference/osdr-faq/" target="_blank" rel="noopener noreferrer">FAQ oficial do NASA OSDR sobre citações</a></p>
-        </article>
-      </div>
-      <section class="card provenance">
-        <h2>Proveniência deste carregamento</h2>
-        <p id="provenance-details">Carregue a página “Explorar dados” para consultar a proveniência do pedido atual.</p>
-        <p id="source-hash-wrap" hidden>SHA-256 do ficheiro obtido: <code id="source-hash"></code></p>
-      </section>
-    </section>
   </main>
 
-  <footer>
-    <p>Dados históricos de investigação do NASA OSDR, estudo OSD-575. Os resultados são agregados e destinam-se à exploração científica, não a decisões clínicas ou operacionais.</p>
-    <p>Confirme a citação, versão e termos aplicáveis na página oficial antes de reutilizar os dados.</p>
+  <footer aria-label="Informação do protótipo">
+    <p>Protótipo de monitorização. Não utilizar para decisões clínicas ou dados reais sem validação competente e aprovação operacional.</p>
   </footer>
 
   <script>
-    const DATASET_URL = "/api/v1/scientific-data/public/osdr/inspiration4/cmp";
     const INDICATORS_URL = "/api/v1/indicators";
-    const state = { dataset: null, metricKey: null, loading: false, indicatorCatalog: [], indicatorFilter: "all", missionToken: "", offlineDb: null };
+    const state = {
+      indicatorCatalog: [],
+      indicatorCatalogPromise: null,
+      indicatorFilter: "all",
+      missionCoverage: null,
+      missionToken: "",
+      offlineDb: null
+    };
     const byId = id => document.getElementById(id);
     const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -857,17 +860,40 @@
       }).format(date) + " UTC";
     };
 
-    function clearMissionSession() {
-      state.missionToken = "";
+    function clearMissionDashboardData() {
       byId("mission-results").hidden = true;
       byId("mission-indicators").innerHTML = "";
       byId("mission-alerts").innerHTML = "";
       byId("mission-alert-summary").textContent = "";
+      byId("mission-reading-summary").textContent = "";
       byId("mission-token").value = "";
       byId("mission-astronaut").value = "";
       byId("mission-trend-result").textContent = "";
-      byId("mission-astronaut").value = "";
+      byId("mission-trend-chart").innerHTML = "";
       byId("mission-status").textContent = "";
+      byId("summary-readings").textContent = "—";
+      byId("summary-systems").textContent = "—";
+      byId("summary-alerts").textContent = "—";
+      byId("summary-astronaut").textContent = "—";
+      byId("body-map-status").textContent = "Carregue um resumo autorizado para ver a cobertura observada.";
+      state.missionCoverage = null;
+      renderBodySystems();
+    }
+
+    function clearMissionSession() {
+      state.missionToken = "";
+      state.indicatorFilter = "all";
+      clearMissionDashboardData();
+      renderIndicatorFilters();
+      renderIndicatorGroups(state.indicatorCatalog);
+      setConnectionStatus("A aguardar autenticação", "waiting");
+    }
+
+    function setConnectionStatus(message, connectionState) {
+      byId("connection-status").textContent = message;
+      byId("connection-status").previousElementSibling.style.background =
+        connectionState === "connected" ? "var(--success)"
+          : connectionState === "error" ? "var(--danger)" : "#d7a94b";
     }
 
     function clearOfflineView() {
@@ -890,86 +916,49 @@
         if (button.dataset.view === view) button.setAttribute("aria-current", "page");
         else button.removeAttribute("aria-current");
       });
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({
+        top: 0,
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth"
+      });
     }
 
-    function renderChart(metric) {
-      const container = byId("chart");
-      const points = metric.points;
-      const usable = points.filter(point => point.mean !== null);
-      if (!usable.length) {
-        container.innerHTML = '<div class="chart-empty">Não existem valores numéricos para este marcador no ficheiro obtido.</div>';
+    const bodySystemCodes = {
+      wellbeing: "BE",
+      respiratory: "RP",
+      cardiovascular: "CV",
+      thermoregulation: "TR",
+      metabolic: "MT",
+      recovery: "RC"
+    };
+
+    function renderBodySystems(coverage = null) {
+      state.missionCoverage = coverage;
+      const container = byId("mission-body-systems");
+      const systems = new Map();
+      state.indicatorCatalog.forEach(indicator => {
+        const key = indicator.body_system || "other";
+        systems.set(key, (systems.get(key) || []).concat(indicator));
+      });
+      if (!systems.size) {
+        container.innerHTML = '<p class="dataset-status">O catálogo de indicadores não está disponível.</p>';
         return;
       }
-
-      const width = 820;
-      const height = 300;
-      const margin = { top: 18, right: 24, bottom: 46, left: 64 };
-      const plotWidth = width - margin.left - margin.right;
-      const plotHeight = height - margin.top - margin.bottom;
-      const values = points.flatMap(point => [point.observed_min, point.observed_max]).filter(Number.isFinite);
-      let minimum = Math.min(...values);
-      let maximum = Math.max(...values);
-      if (minimum === maximum) {
-        const pad = Math.abs(minimum) * .08 || 1;
-        minimum -= pad;
-        maximum += pad;
-      } else {
-        const pad = (maximum - minimum) * .12;
-        minimum -= pad;
-        maximum += pad;
-      }
-      const x = index => margin.left + index * plotWidth / Math.max(points.length - 1, 1);
-      const y = value => margin.top + (maximum - value) * plotHeight / (maximum - minimum);
-      const axis = Array.from({ length: 5 }, (_, index) => {
-        const value = maximum - index * (maximum - minimum) / 4;
-        const position = y(value);
-        return `<line class="chart-grid" x1="${margin.left}" x2="${width - margin.right}" y1="${position}" y2="${position}"></line>
-          <text class="chart-axis" x="${margin.left - 10}" y="${position + 4}" text-anchor="end">${formatNumber(value)}</text>`;
-      }).join("");
-      let ranges = "";
-      let pointsDrawing = "";
-      const pathSegments = [];
-      let currentSegment = [];
-      points.forEach((point, index) => {
-        const px = x(index);
-        if (point.mean === null) {
-          if (currentSegment.length) pathSegments.push(currentSegment.join(" "));
-          currentSegment = [];
-          return;
-        }
-        const py = y(point.mean);
-        ranges += `<line class="chart-range" x1="${px}" x2="${px}" y1="${y(point.observed_max)}" y2="${y(point.observed_min)}"></line>
-          <line class="chart-cap" x1="${px - 6}" x2="${px + 6}" y1="${y(point.observed_max)}" y2="${y(point.observed_max)}"></line>
-          <line class="chart-cap" x1="${px - 6}" x2="${px + 6}" y1="${y(point.observed_min)}" y2="${y(point.observed_min)}"></line>`;
-        currentSegment.push(`${currentSegment.length ? "L" : "M"}${px},${py}`);
-        pointsDrawing += `<circle class="chart-point" cx="${px}" cy="${py}" r="6"><title>${escapeHtml(point.timepoint)}: ${formatNumber(point.mean)} ${escapeHtml(metric.unit)}</title></circle>`;
-      });
-      if (currentSegment.length) pathSegments.push(currentSegment.join(" "));
-      const lines = pathSegments.map(path => `<path class="chart-line" d="${path}"></path>`).join("");
-      const labels = points.map((point, index) =>
-        `<text class="chart-axis" x="${x(index)}" y="${height - 13}" text-anchor="middle">${escapeHtml(point.timepoint)}</text>`
-      ).join("");
-      container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(metric.label)} por ponto de recolha; linha de médias e intervalo observado">
-        ${axis}${ranges}${lines}${pointsDrawing}${labels}
-      </svg>`;
-    }
-
-    function renderMetric() {
-      const metric = state.dataset.metrics.find(item => item.key === state.metricKey);
-      if (!metric) return;
-      byId("metric-description").textContent = `${metric.label} · unidade original: ${metric.unit}. Linha temporal baseada no rótulo de amostra NASA.`;
-      renderChart(metric);
-      byId("metric-rows").innerHTML = metric.points.map(point => {
-        const range = point.observed_min === null ? "—" : `${formatNumber(point.observed_min)}–${formatNumber(point.observed_max)} ${escapeHtml(metric.unit)}`;
-        return `<tr>
-          <td><strong>${escapeHtml(point.timepoint)}</strong></td>
-          <td class="metric-value">${formatNumber(point.mean)} ${point.mean === null ? "" : escapeHtml(metric.unit)}</td>
-          <td>${range}</td>
-          <td>${point.sample_count}</td>
-          <td>${point.missing_count}</td>
-        </tr>`;
-      }).join("");
+      const coverageByMetric = new Map((coverage?.indicators || []).map(item => [item.metric, item]));
+      container.innerHTML = [...systems.entries()]
+        .sort(([left], [right]) => labelForSystem(left).localeCompare(labelForSystem(right), "pt"))
+        .map(([system, indicators]) => {
+          const observed = indicators.filter(item => (coverageByMetric.get(item.metric)?.sample_count || 0) > 0).length;
+          const detail = coverage
+            ? `${observed} de ${indicators.length} indicadores com registos`
+            : `${indicators.length} indicadores no catálogo`;
+          const code = bodySystemCodes[system] || "SI";
+          return `<button class="body-system-button" type="button" data-body-system="${escapeHtml(system)}" aria-pressed="${state.indicatorFilter === system}">
+            <span class="body-system-code" aria-hidden="true">${code}</span>
+            <span class="body-system-copy"><strong>${escapeHtml(labelForSystem(system))}</strong><span>${detail}</span></span>
+          </button>`;
+        }).join("");
     }
 
     function renderIndicatorGroups(indicators) {
@@ -977,68 +966,51 @@
       const filtered = state.indicatorFilter === "all"
         ? indicators
         : indicators.filter(indicator => indicator.body_system === state.indicatorFilter);
-      const warning = byId("clinical-warning");
-      if (warning && indicators.some(indicator => indicator.clinical_thresholds && indicator.clinical_thresholds.status === "illustrative")) {
-        warning.textContent = "Limiares clínicos neste painel são ilustrativos e não substituem avaliação profissional; a fonte não está validada neste deployment.";
-      }
-      const summary = byId("indicator-summary");
-      if (summary) {
-        const systems = new Set(indicators.map(indicator => indicator.body_system).filter(Boolean));
-        const trendReady = indicators.filter(indicator => indicator.trend_supported).length;
-        summary.innerHTML = `
-          <div class="indicator-summary-card">
-            <small>Total</small>
-            <strong>${indicators.length}</strong>
-          </div>
-          <div class="indicator-summary-card">
-            <small>Sistemas</small>
-            <strong>${systems.size}</strong>
-          </div>
-          <div class="indicator-summary-card">
-            <small>Tendência</small>
-            <strong>${trendReady}</strong>
-          </div>
-        `;
-      }
       const groups = new Map();
       filtered.forEach(indicator => {
         const key = indicator.body_system || "other";
-        const current = groups.get(key) || [];
-        current.push(indicator);
-        groups.set(key, current);
+        groups.set(key, (groups.get(key) || []).concat(indicator));
       });
+      const systems = new Set(indicators.map(indicator => indicator.body_system).filter(Boolean));
+      const trendReady = indicators.filter(indicator => indicator.trend_supported).length;
+      byId("indicator-summary").innerHTML = `
+        <div class="indicator-summary-card"><small>Indicadores</small><strong>${indicators.length}</strong></div>
+        <div class="indicator-summary-card"><small>Sistemas</small><strong>${systems.size}</strong></div>
+        <div class="indicator-summary-card"><small>Tendência suportada</small><strong>${trendReady}</strong></div>`;
+      const warning = byId("clinical-warning");
+      warning.textContent = indicators.some(item => item.clinical_thresholds?.status === "illustrative")
+        ? "Os limiares clínicos são ilustrativos e não representam normalidade, diagnóstico ou critério de aptidão."
+        : "Não há limiares clínicos aprovados apresentados neste painel.";
       if (!groups.size) {
         container.innerHTML = '<p class="dataset-status">Sem indicadores disponíveis para este sistema corporal.</p>';
         return;
       }
-      const entries = [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
-      container.innerHTML = entries.map(([system, items]) => {
-        const orderedItems = [...items].sort((left, right) => (left.sort_order ?? 999) - (right.sort_order ?? 999));
-        return `
-          <section class="indicator-group" role="listitem">
+      container.innerHTML = [...groups.entries()].sort(([left], [right]) => left.localeCompare(right))
+        .map(([system, items]) => {
+          const orderedItems = [...items].sort((left, right) => (left.sort_order ?? 999) - (right.sort_order ?? 999));
+          return `<section class="indicator-group" role="listitem">
             <h3>${escapeHtml(labelForSystem(system))}</h3>
             <ul class="indicator-list">
-              ${orderedItems.map(item => `
-                <li class="indicator-item">
+              ${orderedItems.map(item => {
+                const thresholdStatus = item.clinical_thresholds?.status;
+                const thresholdLabel = thresholdStatus === "illustrative" ? "Ilustrativo" : "Sem limiar";
+                return `<li class="indicator-item">
                   <div class="indicator-name">
                     <span>${escapeHtml(item.display_name || item.metric.replace(/_/g, " "))}</span>
                     <span class="badge">${item.trend_supported ? "Tendência" : "Sem tendência"}</span>
                   </div>
                   <div class="indicator-meta">
                     <div>Unidade: ${escapeHtml(item.unit)}</div>
-                    <div>Faixa técnica: ${escapeHtml(item.technical_validation_range.join("–"))}</div>
+                    <div>Faixa técnica de entrada: ${escapeHtml(item.technical_validation_range.join("–"))}</div>
                   </div>
-                    <div class="indicator-context">${escapeHtml(item.monitoring_focus || "Contexto operacional em análise.")}</div>
-                    <div class="indicator-support">${escapeHtml(item.ground_support_note || "Contexto de apoio ao solo não disponível.")}</div>
-                  <div class="badges">
-                    <span class="badge">${item.clinical_thresholds && item.clinical_thresholds.status === "illustrative" ? "ilustrativo" : "validado"}</span>
-                  </div>
-                </li>
-              `).join("")}
+                  <div class="indicator-context">${escapeHtml(item.monitoring_focus || "Contexto operacional não indicado.")}</div>
+                  <div class="indicator-support"><strong>Apoio ao solo:</strong> ${escapeHtml(item.ground_support_note || "Sem orientação operacional configurada.")}</div>
+                  <div class="badges"><span class="badge">${thresholdLabel}</span></div>
+                </li>`;
+              }).join("")}
             </ul>
-          </section>
-        `;
-      }).join("");
+          </section>`;
+        }).join("");
     }
 
     function renderIndicatorFilters() {
@@ -1058,58 +1030,58 @@
       `).join("");
     }
 
-    function renderMissionOverview() {
-      const indicators = state.indicatorCatalog || [];
-      const systems = new Set(indicators.map(indicator => indicator.body_system).filter(Boolean));
-      const trendReady = indicators.filter(indicator => indicator.trend_supported).length;
-      const missing = indicators.some(indicator => !indicator.trend_supported);
-      const container = byId("mission-overview-grid");
-      if (!container) return;
-      container.innerHTML = `
-        <article class="mission-card">
-          <span class="eyebrow">Indicadores</span>
-          <strong>${indicators.length}</strong>
-          <p>Catálogo operacional em monitorização por sistema corporal e contexto de missão.</p>
-        </article>
-        <article class="mission-card">
-          <span class="eyebrow">Sistemas</span>
-          <strong>${systems.size}</strong>
-          <p>Grupos principais para comparação de tendência, carga e recuperação.</p>
-        </article>
-        <article class="mission-card">
-          <span class="eyebrow">Tendência</span>
-          <strong>${trendReady}</strong>
-          <p>${missing ? "A maioria está pronta para análise temporal; alguns itens exigem contexto adicional." : "Todos os indicadores estão preparados para análise temporal."}</p>
-        </article>
-        <article class="mission-card">
-          <span class="eyebrow">Offline</span>
-          <strong>Sincronizado</strong>
-          <p>O estado local é tratado como ciência de apoio e continuidade operacional; o solo continua responsável pela interpretação final.</p>
-        </article>
-      `;
+    function renderMissionOverview(history, coverage, alerts) {
+      const observedSystems = new Set(
+        coverage.indicators
+          .filter(indicator => indicator.sample_count > 0)
+          .map(indicator => state.indicatorCatalog.find(item => item.metric === indicator.metric)?.body_system)
+          .filter(Boolean)
+      );
+      byId("summary-readings").textContent = numberFormat.format(history.total);
+      byId("summary-systems").textContent = numberFormat.format(observedSystems.size);
+      byId("summary-alerts").textContent = numberFormat.format(alerts.total);
+      byId("summary-astronaut").textContent = byId("mission-astronaut").value.trim();
+      byId("body-map-status").textContent =
+        `${observedSystems.size} sistemas com registos no período. Cobertura observada não estima medições esperadas nem em falta.`;
+      renderBodySystems(coverage);
     }
 
     function renderMissionReadings(history, coverage) {
       const latestByMetric = new Map();
       history.items.forEach(reading => {
-        if (!latestByMetric.has(reading.metric)) latestByMetric.set(reading.metric, reading);
+        const previous = latestByMetric.get(reading.metric);
+        if (!previous || new Date(reading.measured_at) > new Date(previous.measured_at)) {
+          latestByMetric.set(reading.metric, reading);
+        }
       });
       byId("mission-reading-summary").textContent =
-        `${history.total} medições no período (a mostrar até ${history.items.length}); contagens observadas não indicam medições esperadas ou em falta.`;
-      byId("mission-indicators").innerHTML = coverage.indicators.map(indicator => {
-        const latest = latestByMetric.get(indicator.metric);
-        const label = state.indicatorCatalog.find(item => item.metric === indicator.metric)?.display_name
-          || indicator.metric.replace(/_/g, " ");
-        const value = latest
-          ? `${formatNumber(latest.value)} ${escapeHtml(latest.unit)}`
-          : "Sem medição";
-        const measuredAt = latest ? formatDate(latest.measured_at) : "Não observado no período";
-        return `<article class="mission-indicator">
-          <span>${escapeHtml(label)}</span>
-          <strong>${value}</strong>
-          <span>${indicator.sample_count} registos · ${escapeHtml(measuredAt)}</span>
-        </article>`;
-      }).join("");
+        `${history.total} medições no período; a mostrar até ${history.items.length}. A cobertura representa registos observados, não medições esperadas.`;
+      const groups = new Map();
+      coverage.indicators.forEach(indicator => {
+        const system = state.indicatorCatalog.find(item => item.metric === indicator.metric)?.body_system || "other";
+        groups.set(system, (groups.get(system) || []).concat(indicator));
+      });
+      if (!groups.size) {
+        byId("mission-indicators").innerHTML = '<p class="dataset-status">Sem medições registadas neste período.</p>';
+        return;
+      }
+      byId("mission-indicators").innerHTML = [...groups.entries()]
+        .sort(([left], [right]) => labelForSystem(left).localeCompare(labelForSystem(right), "pt"))
+        .map(([system, indicators]) => `<section class="mission-indicator-group">
+          <h3>${escapeHtml(labelForSystem(system))}</h3>
+          <div class="mission-indicators">${indicators.map(indicator => {
+            const latest = latestByMetric.get(indicator.metric);
+            const label = state.indicatorCatalog.find(item => item.metric === indicator.metric)?.display_name
+              || indicator.metric.replace(/_/g, " ");
+            const value = latest ? `${formatNumber(latest.value)} ${escapeHtml(latest.unit)}` : "Valor não carregado";
+            const measuredAt = latest ? formatDate(latest.measured_at) : formatDate(indicator.latest_measured_at);
+            return `<article class="mission-indicator">
+              <span>${escapeHtml(label)}</span>
+              <strong>${value}</strong>
+              <span>${indicator.sample_count} registos · último: ${escapeHtml(measuredAt)}</span>
+            </article>`;
+          }).join("")}</div>
+        </section>`).join("");
     }
 
     function renderMissionAlerts(alertHistory) {
@@ -1157,6 +1129,7 @@
     }
 
     async function loadMissionDashboard(start, end) {
+      if (state.indicatorCatalogPromise) await state.indicatorCatalogPromise;
       const astronautId = byId("mission-astronaut").value.trim();
       const params = new URLSearchParams({
         astronaut_id: astronautId,
@@ -1164,12 +1137,15 @@
         end: end.toISOString()
       });
       const [history, coverage, alerts] = await Promise.all([
-        missionApi(`/api/v1/readings?${params}&limit=100`, state.missionToken),
+        missionApi(`/api/v1/readings?${params}&limit=500`, state.missionToken),
         missionApi(`/api/v1/readings/coverage?${params}`, state.missionToken),
         missionApi(`/api/v1/alerts?${params}&limit=100`, state.missionToken)
       ]);
       renderMissionReadings(history, coverage);
       renderMissionAlerts(alerts);
+      renderMissionOverview(history, coverage, alerts);
+      renderIndicatorFilters();
+      renderIndicatorGroups(state.indicatorCatalog);
       byId("mission-results").hidden = false;
     }
 
@@ -1183,6 +1159,70 @@
         select.value = previousMetric;
       }
       byId("mission-glucose-context-field").hidden = select.value !== "blood_glucose";
+    }
+
+    function renderMissionTrendChart(history, metric, unit) {
+      const container = byId("mission-trend-chart");
+      const metricLabel = state.indicatorCatalog.find(item => item.metric === metric)?.display_name
+        || metric.replace(/_/g, " ");
+      const readings = [...history.items].sort(
+        (left, right) => new Date(left.measured_at) - new Date(right.measured_at)
+      );
+      if (readings.length < 2) {
+        container.innerHTML = `<div class="chart-empty">${readings.length
+          ? "Uma medição disponível. São necessárias pelo menos duas para mostrar uma tendência."
+          : "Sem medições para este indicador e período."}</div>`;
+        return;
+      }
+
+      const width = 760;
+      const height = 260;
+      const margin = { top: 24, right: 24, bottom: 42, left: 58 };
+      const plotWidth = width - margin.left - margin.right;
+      const plotHeight = height - margin.top - margin.bottom;
+      const values = readings.map(reading => reading.value);
+      let minimum = Math.min(...values);
+      let maximum = Math.max(...values);
+      if (minimum === maximum) {
+        const padding = Math.abs(minimum) * .05 || 1;
+        minimum -= padding;
+        maximum += padding;
+      } else {
+        const padding = (maximum - minimum) * .1;
+        minimum -= padding;
+        maximum += padding;
+      }
+      const x = index => margin.left + index * plotWidth / (readings.length - 1);
+      const y = value => margin.top + (maximum - value) * plotHeight / (maximum - minimum);
+      const path = readings.map((reading, index) =>
+        `${index ? "L" : "M"}${x(index)},${y(reading.value)}`
+      ).join(" ");
+      const points = readings.map((reading, index) =>
+        `<circle class="mission-trend-point" cx="${x(index)}" cy="${y(reading.value)}" r="4"><title>${escapeHtml(formatDate(reading.measured_at))}: ${formatNumber(reading.value)} ${escapeHtml(unit)}</title></circle>`
+      ).join("");
+      const firstDate = new Intl.DateTimeFormat("pt-PT", { dateStyle: "medium" }).format(new Date(readings[0].measured_at));
+      const lastDate = new Intl.DateTimeFormat("pt-PT", { dateStyle: "medium" }).format(new Date(readings[readings.length - 1].measured_at));
+      const tableRows = readings.slice(-10).reverse().map(reading => `
+        <tr><td>${escapeHtml(formatDate(reading.measured_at))}</td><td class="metric-value">${formatNumber(reading.value)} ${escapeHtml(unit)}</td></tr>
+      `).join("");
+      container.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Série descritiva de ${escapeHtml(metricLabel)} com ${readings.length} medições">
+          <title>${escapeHtml(metricLabel)} — série descritiva</title>
+          <line class="chart-grid" x1="${margin.left}" x2="${width - margin.right}" y1="${margin.top}" y2="${margin.top}"></line>
+          <line class="chart-grid" x1="${margin.left}" x2="${width - margin.right}" y1="${height - margin.bottom}" y2="${height - margin.bottom}"></line>
+          <text class="mission-trend-label" x="${margin.left - 8}" y="${margin.top + 4}" text-anchor="end">${formatNumber(maximum)}</text>
+          <text class="mission-trend-label" x="${margin.left - 8}" y="${height - margin.bottom + 4}" text-anchor="end">${formatNumber(minimum)}</text>
+          <path class="mission-trend-line" d="${path}"></path>${points}
+          <text class="mission-trend-label" x="${margin.left}" y="${height - 12}">${escapeHtml(firstDate)}</text>
+          <text class="mission-trend-label" x="${width - margin.right}" y="${height - 12}" text-anchor="end">${escapeHtml(lastDate)}</text>
+        </svg>
+        <div class="table-wrap mission-trend-table">
+          <table>
+            <caption>${Math.min(readings.length, 10)} medições mais recentes da série; a linha representa os valores observados, sem limiares clínicos.</caption>
+            <thead><tr><th scope="col">Data</th><th scope="col">${escapeHtml(metricLabel)} (${escapeHtml(unit)})</th></tr></thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>`;
     }
 
     async function loadMissionTrend(event) {
@@ -1214,8 +1254,21 @@
       }
       byId("mission-trend-load").disabled = true;
       byId("mission-trend-result").textContent = "A calcular estatísticas descritivas…";
+      byId("mission-trend-chart").innerHTML = "";
       try {
-        const analysis = await missionApi(`/api/v1/readings/analysis?${params}`, state.missionToken);
+        const readingsParams = new URLSearchParams(params);
+        readingsParams.delete("glucose_context");
+        readingsParams.set("limit", "100");
+        const [analysis, readings] = await Promise.all([
+          missionApi(`/api/v1/readings/analysis?${params}`, state.missionToken),
+          missionApi(`/api/v1/readings?${readingsParams}`, state.missionToken)
+        ]);
+        if (metric === "blood_glucose") {
+          readings.items = readings.items.filter(
+            reading => reading.glucose_context === byId("mission-glucose-context").value
+          );
+        }
+        renderMissionTrendChart(readings, analysis.metric, analysis.unit);
         const slope = analysis.trend_slope_per_day === null
           ? "Inclinação: indisponível para este conjunto de amostras."
           : `Inclinação linear: ${formatNumber(analysis.trend_slope_per_day)} ${analysis.unit}/dia.`;
@@ -1541,6 +1594,8 @@
           usingCache = true;
         } catch (cacheError) {
           byId("indicator-groups").innerHTML = `<p class="dataset-status">Não foi possível carregar o catálogo de indicadores: ${escapeHtml(cacheError.message)}</p>`;
+          byId("mission-body-systems").innerHTML = '<p class="dataset-status">O mapa corporal continua esquemático; o catálogo não está disponível.</p>';
+          byId("body-map-status").textContent = `Catálogo indisponível: ${cacheError.message}`;
           renderOfflineMetricFields();
           byId("offline-record-status").textContent = `Fila offline indisponível: ${cacheError.message}`;
           return;
@@ -1548,12 +1603,13 @@
       }
       state.indicatorCatalog = indicators;
       renderIndicatorFilters();
-      renderMissionOverview();
+      renderBodySystems();
       renderIndicatorGroups(indicators);
       renderMissionTrendOptions();
       renderOfflineMetricFields();
       if (usingCache) {
         byId("indicator-groups").insertAdjacentHTML("afterbegin", '<p class="dataset-status">A mostrar catálogo local em cache; atualização indisponível.</p>');
+        byId("body-map-status").textContent = "Catálogo local em cache; os dados operacionais continuam sujeitos a autorização.";
       } else {
         try {
           await cacheIndicatorCatalog(indicators);
@@ -1568,78 +1624,18 @@
       }
     }
 
-    function renderDataset(dataset) {
-      state.dataset = dataset;
-      if (!dataset.metrics.length) throw new Error("O conjunto NASA não contém os marcadores esperados.");
-      const previousMetric = state.metricKey;
-      byId("dataset-title").textContent = dataset.title;
-      byId("dataset-summary").textContent = `${dataset.record_count} registos séricos agregados em ${dataset.sample_count} amostras do ficheiro. Origem declarada: NASA OSDR, sem identificadores de amostra nesta visualização.`;
-      byId("source-id").textContent = `${dataset.accession} · ${dataset.source_file_name}`;
-      byId("study-link").href = dataset.study_url;
-      byId("file-link").href = dataset.source_file_url;
-      byId("metric-select").innerHTML = dataset.metrics.map(metric =>
-        `<option value="${escapeHtml(metric.key)}">${escapeHtml(metric.label)} (${escapeHtml(metric.unit)})</option>`
-      ).join("");
-      state.metricKey = dataset.metrics.some(metric => metric.key === previousMetric)
-        ? previousMetric
-        : dataset.metrics[0].key;
-      byId("metric-select").value = state.metricKey;
-      byId("retrieval-status").textContent = `Ficheiro atualizado pela NASA: ${formatDate(dataset.source_file_updated_at)} · consultado: ${formatDate(dataset.retrieved_at)}`;
-      byId("source-license-note").textContent = dataset.restricted
-        ? "O NASA OSDR indica que o ficheiro tem acesso restrito. Consulte a página oficial para conhecer as condições de acesso e utilização."
-        : "O NASA OSDR indica o ficheiro como não restrito. A licença específica continua por verificar; consulte a página oficial antes de redistribuir.";
-      byId("connection-status").textContent = "Dados recebidos do NASA OSDR";
-      byId("connection-status").previousElementSibling.style.background = "var(--success)";
-      byId("provenance-details").textContent = `${dataset.accession} · ${dataset.source_file_name} · ${dataset.record_count} registos · obtido em ${formatDate(dataset.retrieved_at)}. Citação do catálogo: ${dataset.citation}`;
-      byId("source-hash").textContent = dataset.source_file_sha256;
-      byId("source-hash-wrap").hidden = false;
-      byId("dataset-content").hidden = false;
-      byId("loading").hidden = true;
-      byId("load-error").hidden = true;
-      renderMetric();
-    }
-
-    async function loadDataset() {
-      if (state.loading) return;
-      state.loading = true;
-      byId("refresh").disabled = true;
-      byId("retry").disabled = true;
-      byId("loading").hidden = false;
-      byId("load-error").hidden = true;
-      byId("dataset-content").hidden = true;
-      byId("connection-status").textContent = "A consultar NASA OSDR…";
-      byId("connection-status").previousElementSibling.style.background = "#d7a94b";
-      try {
-        const response = await fetch(DATASET_URL, { headers: { Accept: "application/json" } });
-        const body = await response.json().catch(() => null);
-        if (!response.ok) {
-          const detail = body && typeof body.detail === "string" ? body.detail : `Erro HTTP ${response.status}.`;
-          throw new Error(detail);
-        }
-        renderDataset(body);
-      } catch (error) {
-        byId("loading").hidden = true;
-        byId("error-message").textContent = `Não foi possível carregar os dados NASA: ${error.message}`;
-        byId("load-error").hidden = false;
-        byId("connection-status").textContent = "NASA OSDR indisponível";
-        byId("connection-status").previousElementSibling.style.background = "var(--danger)";
-      } finally {
-        state.loading = false;
-        byId("refresh").disabled = false;
-        byId("retry").disabled = false;
-      }
-    }
-
     document.addEventListener("click", event => {
       const navButton = event.target.closest("[data-view]");
       if (navButton) setView(navButton.dataset.view);
       const filterButton = event.target.closest("[data-indicator-filter]");
-      if (filterButton) {
-        state.indicatorFilter = filterButton.dataset.indicatorFilter;
+      const bodySystemButton = event.target.closest("[data-body-system]");
+      if (filterButton || bodySystemButton) {
+        state.indicatorFilter = filterButton?.dataset.indicatorFilter
+          || bodySystemButton.dataset.bodySystem;
         renderIndicatorFilters();
         renderIndicatorGroups(state.indicatorCatalog);
+        renderBodySystems(state.missionCoverage);
       }
-      if (event.target.closest("#retry") || event.target.closest("#refresh")) loadDataset();
     });
     byId("mission-dashboard-form").addEventListener("submit", async event => {
       event.preventDefault();
@@ -1655,13 +1651,17 @@
       tokenInput.value = "";
       byId("mission-load").disabled = true;
       byId("mission-status").textContent = "A consultar dados autorizados…";
-      byId("mission-results").hidden = true;
+      clearMissionDashboardData();
+      setConnectionStatus("A consultar dados da missão…", "waiting");
       try {
         await loadMissionDashboard(start, end);
         byId("mission-status").textContent = "Resumo carregado. Os dados permanecem sujeitos ao escopo e às permissões do token.";
+        setConnectionStatus("Dados autorizados carregados", "connected");
       } catch (error) {
         state.missionToken = "";
+        clearMissionDashboardData();
         byId("mission-status").textContent = `Não foi possível carregar o resumo: ${error.message}`;
+        setConnectionStatus("Não foi possível carregar", "error");
       } finally {
         byId("mission-load").disabled = false;
       }
@@ -1705,12 +1705,7 @@
     renderOfflineQueue().catch(error => {
       byId("offline-queue-summary").textContent = `Fila local indisponível: ${error.message}`;
     });
-    byId("metric-select").addEventListener("change", event => {
-      state.metricKey = event.target.value;
-      if (state.dataset) renderMetric();
-    });
-    loadIndicatorCatalog();
-    loadDataset();
+    state.indicatorCatalogPromise = loadIndicatorCatalog();
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/service-worker.js").catch(error => {
         byId("offline-connection-status").textContent = `Painel offline não preparado: ${error.message}`;

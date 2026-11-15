@@ -1335,16 +1335,23 @@ def test_frontend_is_served_from_application_root():
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "SOMA" in response.text
-    assert "NASA OSDR" in response.text
-    assert "/api/v1/scientific-data/public/osdr/inspiration4/cmp" in response.text
+    assert "NASA OSDR" not in response.text
+    assert "Citação e crédito" not in response.text
+    assert "/api/v1/scientific-data/public/osdr/inspiration4/cmp" not in response.text
     assert "Cadastrar astronauta" not in response.text
     assert "auth/challenges" not in response.text
     assert "soma-prototype-v1" not in response.text
-    assert 'data-view="mission"' in response.text
+    assert (
+        '<button type="button" data-view="mission" aria-current="page">'
+        "Monitorização</button>"
+    ) in response.text
+    assert 'id="human-map-svg-title"' in response.text
+    assert 'id="mission-body-systems"' in response.text
     assert 'id="mission-dashboard-form"' in response.text
     assert 'type="password"' in response.text
     assert "/api/v1/readings/coverage" in response.text
     assert "/api/v1/readings/analysis" in response.text
+    assert 'id="mission-trend-chart"' in response.text
     assert "/api/v1/alerts/" in response.text
     assert 'data-ack-alert=' in response.text
     assert 'id="offline-reading-form"' in response.text
